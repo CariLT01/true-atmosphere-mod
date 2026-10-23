@@ -23,4 +23,4 @@ Techniques include but not limited to multi-scattering.
 
 ## License
 
-
+LGPL-v3.0
