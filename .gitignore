@@ -4,3 +4,5 @@ run/
 screenshots/
 .idea/
 .gradle/
+
+src/main/resources/assets/trueatmosphere/sky/*
