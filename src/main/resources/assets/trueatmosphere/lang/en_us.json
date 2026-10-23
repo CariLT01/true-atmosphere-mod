@@ -1,0 +1,11 @@
+{
+  "trueatmosphere.configuration.displayExposure": "Sky Display Exposure",
+  "trueatmosphere.configuration.moonGain": "Moon Gain",
+  "trueatmosphere.configuration.moonGlareKnee": "Moon Glare",
+  "trueatmosphere.configuration.moonSaturation": "Moon Saturation",
+
+  "trueatmosphere.configuration.displayExposure.tooltip": "Linear trim on the baked sky colour: 1.0 is the physical sky the bake produced.",
+  "trueatmosphere.configuration.moonGain.tooltip": "Brightness of the moonlight added to the night sky.",
+  "trueatmosphere.configuration.moonGlareKnee.tooltip": "Soft shoulder on a bright moon, so a low moon does not paint a second sunset.",
+  "trueatmosphere.configuration.moonSaturation.tooltip": "How much colour the moonlight keeps; low values are the eye's Purkinje shift."
+}

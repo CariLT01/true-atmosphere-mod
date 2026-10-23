@@ -1,0 +1,6 @@
+build/
+internal/
+run/
+screenshots/
+.idea/
+.gradle/
