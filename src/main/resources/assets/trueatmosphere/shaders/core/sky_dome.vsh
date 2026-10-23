@@ -1,10 +1,14 @@
 #version 150
 
 in vec3 Position;
+in vec4 Color;
 
-out vec2 v_ndc;
+uniform mat4 ModelViewMat;
+uniform mat4 ProjMat;
+
+out vec3 v_colour;
 
 void main() {
-    v_ndc = Position.xy;
-    gl_Position = vec4(Position.xy, 1.0, 1.0);
+    v_colour = Color.rgb;
+    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
 }

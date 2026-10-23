@@ -9,7 +9,7 @@ import net.minecraft.client.Screenshot;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 
-final class SkySelfTest {
+public final class SkySelfTest {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String ENV = System.getenv("ATMO_SELFTEST");
     private static final String TAG = System.getenv("ATMO_SELFTEST_TAG");
@@ -40,7 +40,7 @@ final class SkySelfTest {
     private SkySelfTest() {
     }
 
-    static void tick(Minecraft minecraft) {
+    public static void tick(Minecraft minecraft) {
         if (ENV == null || ENV.isBlank()) {
             return;
         }
@@ -188,7 +188,7 @@ final class SkySelfTest {
                 index, times[index], minecraft.level.getDayTime(), angle,
                 Math.round(Math.toDegrees(Math.asin(Math.sin(Math.toRadians(angle))))));
         LOGGER.info("shot {}: expected celestial angle {}", index, targetAngle(times[index]));
-        SkyDomeRenderer renderer = AtmosphereSkyClient.renderer();
+        SkyDomeRenderer renderer = SkyDomeRenderer.instance;
         long uploads = renderer == null ? -1L : renderer.uploads();
         LOGGER.info("shot {}: {}", index, uploads < 0
                 ? "no renderer"

@@ -33,11 +33,12 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 
 @Mod(TrueAtmosphere.MODID)
 public class TrueAtmosphere {
-    public static final String MODID = "trueatmosphere";
-    public static final Logger LOGGER = LogUtils.getLogger();
+    public static final String MODID = ModInfo.MODID;
+    public static final Logger LOGGER = ModInfo.LOGGER;
 
     public TrueAtmosphere(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(Config::onLoad);
 
         NeoForge.EVENT_BUS.register(this);
 

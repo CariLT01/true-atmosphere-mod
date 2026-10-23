@@ -9,13 +9,14 @@ import java.nio.FloatBuffer;
 import java.nio.charset.StandardCharsets;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonParseException;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.Mth;
 
-import com.carilt01.trueatmosphere.TrueAtmosphere;
+import com.carilt01.trueatmosphere.ModInfo;
 
 import org.slf4j.Logger;
 
@@ -35,27 +36,25 @@ public final class SkyLut {
     public final int altitudeSamples;
     public final int azimuthSamples;
 
-    public final float sunRadiusDegrees;
-
-    private SkyLut(String variant, float[] display, int sunSteps, int altitudeSamples, int azimuthSamples,
-            float sunRadiusDegrees) {
+    private SkyLut(String variant, float[] display, int sunSteps, int altitudeSamples, int azimuthSamples) {
         this.variant = variant;
         this.display = display;
         this.sunSteps = sunSteps;
         this.altitudeSamples = altitudeSamples;
         this.azimuthSamples = azimuthSamples;
-        this.sunRadiusDegrees = sunRadiusDegrees;
     }
 
     public static SkyLut load(ResourceManager resources, String variant) throws IOException {
         String stem = CLEAR.equals(variant) ? "sky/sky_lut" : "sky/sky_lut_" + variant;
-        ResourceLocation metaId = ResourceLocation.fromNamespaceAndPath(TrueAtmosphere.MODID, stem + ".json");
-        ResourceLocation dataId = ResourceLocation.fromNamespaceAndPath(TrueAtmosphere.MODID, stem + ".npy");
+        ResourceLocation metaId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".json");
+        ResourceLocation dataId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".npy");
 
         JsonObject meta;
         try (InputStream in = resources.getResourceOrThrow(metaId).open();
                 InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             meta = JsonParser.parseReader(reader).getAsJsonObject();
+        } catch (JsonParseException e) {
+            throw new IOException("Invalid sky LUT metadata in " + metaId, e);
         }
 
         int sunSteps = meta.get("sun_steps").getAsInt();
@@ -65,27 +64,16 @@ public final class SkyLut {
             throw new IOException("Invalid sky LUT dimensions in " + metaId);
         }
 
+        int expected = sunSteps * altitudes * azimuths * 3;
         float[] display;
         try (InputStream in = resources.getResourceOrThrow(dataId).open()) {
-            display = readNpyFloats(in, dataId, sunSteps * altitudes * azimuths * 3);
+            display = readNpyFloats(in, dataId, expected);
         }
 
-        float radius = 0.265F;
-        if (meta.has("sun_disk") && meta.getAsJsonObject("sun_disk").has("angular_radius_degrees")) {
-            radius = meta.getAsJsonObject("sun_disk").get("angular_radius_degrees").getAsFloat();
-        }
-
-        SkyLut lut = new SkyLut(variant, display, sunSteps, altitudes, azimuths, radius);
-        LOGGER.info("Loaded {} sky LUT {}x{}x{} ({} KiB, {} streamed steps of {} KiB, sun radius {} deg)",
-                variant, sunSteps, altitudes, azimuths,
-                display.length * 4 / 1024,
-                sunSteps, lut.stepFloats() * 4 / 1024,
-                radius);
+        SkyLut lut = new SkyLut(variant, display, sunSteps, altitudes, azimuths);
+        LOGGER.info("Loaded {} sky LUT {}x{}x{} ({} KiB, steps of {} KiB)", variant, sunSteps, altitudes, azimuths,
+                display.length * 4 / 1024, lut.stepFloats() * 4 / 1024);
         return lut;
-    }
-
-    public int moonStep(int step) {
-        return (step + this.sunSteps / 2) % this.sunSteps;
     }
 
     public int stepFloats() {
@@ -95,7 +83,6 @@ public final class SkyLut {
     public float[] display() {
         return this.display;
     }
-
 
     public int stepOffset(int step) {
         return step * stepFloats();

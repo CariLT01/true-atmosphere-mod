@@ -23,6 +23,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterDimensionSpecialEffectsEvent;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -30,9 +31,11 @@ import com.carilt01.trueatmosphere.TrueAtmosphere;
 
 public final class AtmosphereSkyClient {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final ResourceLocation SKY_SHADER = ResourceLocation.fromNamespaceAndPath(TrueAtmosphere.MODID, "sky_dome");
+    private static final ResourceLocation SKY_DOME_SHADER = ResourceLocation.fromNamespaceAndPath(TrueAtmosphere.MODID, "sky_dome");
+    private static final ResourceLocation SKY_QUAD_SHADER = ResourceLocation.fromNamespaceAndPath(TrueAtmosphere.MODID, "sky_quad");
 
-    private static ShaderInstance shader;
+    private static ShaderInstance domeShader;
+    private static ShaderInstance quadShader;
     private static SkyLut[] luts;
     private static SkyDomeRenderer renderer;
     private static CompletableFuture<SkyLut[]> lutLoad;
@@ -51,6 +54,7 @@ public final class AtmosphereSkyClient {
 
         NeoForge.EVENT_BUS.addListener(AtmosphereSkyClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(AtmosphereSkyClient::onComputeFogColor);
+        NeoForge.EVENT_BUS.addListener(AtmosphereSkyClient::onAfterSky);
     }
 
     static SkyDomeRenderer renderer() {
@@ -58,17 +62,32 @@ public final class AtmosphereSkyClient {
     }
 
     private static void onRegisterShaders(RegisterShadersEvent event) {
+
         try {
             event.registerShader(
-                    new ShaderInstance(event.getResourceProvider(), SKY_SHADER, DefaultVertexFormat.POSITION),
+                    new ShaderInstance(event.getResourceProvider(), SKY_DOME_SHADER, DefaultVertexFormat.POSITION_COLOR),
                     loaded -> {
-                        shader = loaded;
-                        if (renderer != null) {
-                            renderer.setShader(loaded);
-                        }
+                        domeShader = loaded;
+                        pushShaders();
                     });
         } catch (IOException e) {
-            LOGGER.error("Could not load the atmospheric sky shader", e);
+            LOGGER.error("Could not load the atmospheric dome shader", e);
+        }
+        try {
+            event.registerShader(
+                    new ShaderInstance(event.getResourceProvider(), SKY_QUAD_SHADER, DefaultVertexFormat.POSITION),
+                    loaded -> {
+                        quadShader = loaded;
+                        pushShaders();
+                    });
+        } catch (IOException e) {
+            LOGGER.error("Could not load the atmospheric quad shader", e);
+        }
+    }
+
+    private static void pushShaders() {
+        if (renderer != null) {
+            renderer.setShaders(domeShader, quadShader);
         }
     }
 
@@ -80,6 +99,7 @@ public final class AtmosphereSkyClient {
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         ensureLoaded(minecraft);
+        SkyBench.tick(minecraft);
         SkySelfTest.tick(minecraft);
     }
 
@@ -114,13 +134,17 @@ public final class AtmosphereSkyClient {
             try {
                 luts = lutLoad.join();
                 renderer = new SkyDomeRenderer(luts);
-                if (shader != null) {
-                    renderer.setShader(shader);
-                }
+                renderer.setShaders(domeShader, quadShader);
             } catch (CompletionException e) {
                 lutFailed = true;
                 LOGGER.error("Atmospheric sky disabled: could not load the baked LUT", e.getCause());
             }
+        }
+    }
+
+    private static void onAfterSky(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY) {
+            SkyBench.endSkyStage();
         }
     }
 
@@ -140,7 +164,7 @@ public final class AtmosphereSkyClient {
 
         Vector3f look = event.getCamera().getLookVector();
         float[] color = new float[3];
-        if (!sky.horizonColor(level, (float) event.getPartialTick(), look.x, look.z, color)) {
+        if (!sky.horizonColour(level, (float) event.getPartialTick(), look.x, look.z, color)) {
             return;
         }
 

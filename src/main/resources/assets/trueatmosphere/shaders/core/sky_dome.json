@@ -1,21 +1,61 @@
 {
     "vertex": "trueatmosphere:sky_dome",
     "fragment": "trueatmosphere:sky_dome",
-    "samplers": [
-        { "name": "TableCurrent" },
-        { "name": "TableNext" },
-        { "name": "TableMoonCurrent" },
-        { "name": "TableMoonNext" }
-    ],
+    "samplers": [],
     "uniforms": [
-        { "name": "u_invViewProj", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
-        { "name": "u_t", "type": "float", "count": 1, "values": [ 0.0 ] },
-        { "name": "u_gain", "type": "float", "count": 1, "values": [ 1.0 ] },
-        { "name": "u_night", "type": "float", "count": 1, "values": [ 0.0 ] },
-        { "name": "u_moonGainR", "type": "float", "count": 1, "values": [ 0.06 ] },
-        { "name": "u_moonGainG", "type": "float", "count": 1, "values": [ 0.0582 ] },
-        { "name": "u_moonGainB", "type": "float", "count": 1, "values": [ 0.0528 ] },
-        { "name": "u_azSamples", "type": "int", "count": 1, "values": [ 64 ] },
-        { "name": "u_altSamples", "type": "int", "count": 1, "values": [ 32 ] }
+        {
+            "name": "ModelViewMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ]
+        },
+        {
+            "name": "ProjMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ]
+        },
+        {
+            "name": "u_alpha",
+            "type": "float",
+            "count": 1,
+            "values": [
+                1.0
+            ]
+        }
     ]
 }

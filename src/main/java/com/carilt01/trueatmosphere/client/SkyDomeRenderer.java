@@ -5,18 +5,18 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 
-import com.carilt01.trueatmosphere.Config;
+import com.carilt01.trueatmosphere.AtmosphereSettings;
+import com.carilt01.trueatmosphere.ModInfo;
+import com.carilt01.trueatmosphere.SkyMode;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.logging.LogUtils;
 import com.mojang.math.Axis;
 
 import org.joml.Matrix4f;
@@ -26,9 +26,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryUtil;
-import org.slf4j.Logger;
 
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.FogRenderer;
@@ -39,65 +37,121 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 
 public final class SkyDomeRenderer implements AutoCloseable {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
-    private static final int TEXTURE_UNIT = 33984;
-
     private static final ResourceLocation SUN_TEXTURE = ResourceLocation.withDefaultNamespace("textures/environment/sun.png");
     private static final ResourceLocation MOON_TEXTURE = ResourceLocation.withDefaultNamespace("textures/environment/moon_phases.png");
 
     private static final float SUN_QUAD = 15.0F;
     private static final float MOON_QUAD = 20.0F;
 
-    public static float displayGain = Config.DISPLAY_EXPOSURE.get().floatValue();
+    private static final int TEXTURE_UNIT = 33984;
 
-    private static final float MOON_GAIN = Config.MOON_GAIN.get().floatValue();
-    private static final float[] MOON_COLOUR = {1.0F, 0.97F, 0.88F};
+    private static final int[] SRGB8 = srgb8Table();
 
-    private static final float MOON_GLARE_KNEE = Config.MOON_GLARE_KNEE.get().floatValue();
-    private static final float MOON_SATURATION = Config.MOON_SATURATION.get().floatValue();
+    private static final SkyMode PROPERTY_MODE = modeProperty();
 
-    private final SkyLut[] luts;
+    public static volatile SkyDomeRenderer instance;
+
+    private final SkyLut[] variants;
     private final SkyLut base;
+    private final int rows;
+    private final int columns;
+    private final int paddedColumns;
+
+    private final VertexBuffer[] slots = new VertexBuffer[2];
+    private final int[] slotStep = {-1, -1};
+    private final int[] slotVariant = {-1, -1};
     private final int[] textures = new int[2];
-    private final int[] moonTextures = new int[2];
     private final FloatBuffer upload;
 
-    private final float[] weights = {1.0F, 0.0F, 0.0F};
-    private final float[] uploadedWeights = {-1.0F, -1.0F, -1.0F};
-
-    private ShaderInstance shader;
-    private VertexBuffer domeQuad;
+    private ShaderInstance domeShader;
+    private ShaderInstance quadShader;
+    private VertexBuffer screenQuad;
     private VertexBuffer starBuffer;
-    private boolean gpuReady;
-    private boolean closed;
+    private VertexBuffer sunBuffer;
+    private VertexBuffer moonBuffer;
 
-    private int slot;
-    private int currentStep = -1;
-    private float blend;
-    private final float[] scratch = new float[3];
-    private final float[] blended = new float[3];
-    private final float[] moonBlended = new float[3];
+    private SkyMode gpuMode;
+    private boolean closed;
     private long uploads;
 
+    private long skyNanos;
+    private long uploadNanos;
+    private long uploadCount;
+    private long frames;
+
+    private int variant;
+    private int currentStep;
+    private int nextStep;
+    private float blend;
+    private int current;
+    private int next;
+
     public SkyDomeRenderer(SkyLut[] luts) {
-        this.luts = luts;
+        this.variants = luts;
         this.base = luts[0];
-        this.upload = ByteBuffer.allocateDirect(this.base.stepFloats() * Float.BYTES)
+        this.rows = this.base.altitudeSamples;
+        this.columns = this.base.azimuthSamples;
+        this.paddedColumns = this.columns + 1;
+        this.upload = ByteBuffer.allocateDirect(this.paddedColumns * this.rows * 3 * Float.BYTES)
                 .order(ByteOrder.nativeOrder())
                 .asFloatBuffer();
+        instance = this;
     }
 
-    public void setShader(ShaderInstance shader) {
-        this.shader = shader;
+    public void setShaders(ShaderInstance dome, ShaderInstance quad) {
+        this.domeShader = dome;
+        this.quadShader = quad;
     }
 
     public boolean isReady() {
-        return this.shader != null && !this.closed;
+        if (this.closed) {
+            return false;
+        }
+        SkyMode mode = mode();
+        if (mode == SkyMode.VANILLA) {
+            return false;
+        }
+        return mode == SkyMode.DOME ? this.domeShader != null : this.quadShader != null;
+    }
+
+    public static SkyMode mode() {
+        SkyMode property = PROPERTY_MODE;
+        return property != null ? property : AtmosphereSettings.skyMode;
+    }
+
+    private static SkyMode modeProperty() {
+        String value = System.getProperty("trueatmosphere.sky");
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return SkyMode.byName(value);
     }
 
     public long uploads() {
         return this.uploads;
+    }
+
+    public long skyNanos() {
+        return this.skyNanos;
+    }
+
+    public long uploadNanos() {
+        return this.uploadNanos;
+    }
+
+    public long uploadCount() {
+        return this.uploadCount;
+    }
+
+    public long frames() {
+        return this.frames;
+    }
+
+    public void resetTimings() {
+        this.skyNanos = 0L;
+        this.uploadNanos = 0L;
+        this.uploadCount = 0L;
+        this.frames = 0L;
     }
 
     public static float sunAngle(ClientLevel level, float partialTick) {
@@ -106,92 +160,184 @@ public final class SkyDomeRenderer implements AutoCloseable {
         return angle < 0.0F ? angle + 360.0F : angle;
     }
 
-    private void ensureGpu() {
-        if (this.gpuReady) {
+    private void select(ClientLevel level, float partialTick) {
+        float rain = Mth.clamp(level.getRainLevel(partialTick), 0.0F, 1.0F);
+        float thunder = Math.min(Mth.clamp(level.getThunderLevel(partialTick), 0.0F, 1.0F), rain);
+        float clear = 1.0F - rain;
+        float wet = rain * (1.0F - thunder);
+
+        this.variant = thunder >= wet && thunder >= clear ? 2 : (wet >= clear ? 1 : 0);
+
+        float wrapped = sunAngle(level, partialTick) % 360.0F;
+        int steps = this.base.sunSteps;
+        float floor = (float) Math.floor(wrapped);
+        this.currentStep = (int) floor % steps;
+        this.nextStep = (this.currentStep + 1) % steps;
+        this.blend = wrapped - floor;
+    }
+
+    private void ensureGpu(SkyMode mode) {
+        if (this.gpuMode == mode) {
+            return;
+        }
+        if (mode == SkyMode.VANILLA) {
+            releaseModeResources();
             return;
         }
 
-        int previous = GlStateManager._getActiveTexture();
-        GlStateManager._activeTexture(TEXTURE_UNIT);
-        try {
-            for (int[] target : new int[][] {this.textures, this.moonTextures}) {
+        releaseModeResources();
+
+        if (mode == SkyMode.DOME) {
+            for (int i = 0; i < 2; i++) {
+                this.slots[i] = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            }
+        } else {
+            int previous = GlStateManager._getActiveTexture();
+            GlStateManager._activeTexture(TEXTURE_UNIT);
+            try {
                 for (int i = 0; i < 2; i++) {
                     int id = GlStateManager._genTexture();
-                    target[i] = id;
+                    this.textures[i] = id;
                     GlStateManager._bindTexture(id);
-                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+                    GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
                     GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-                    GlStateManager._texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGB32F,
-                            this.base.azimuthSamples, this.base.altitudeSamples, 0,
+                    GlStateManager._texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGB16F,
+                            this.paddedColumns, this.rows, 0,
                             GL11.GL_RGB, GL11.GL_FLOAT, (java.nio.IntBuffer) null);
                 }
+            } finally {
+                GlStateManager._bindTexture(0);
+                GlStateManager._activeTexture(previous);
             }
-        } finally {
-            GlStateManager._bindTexture(0);
-            GlStateManager._activeTexture(previous);
+
+            this.screenQuad = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.screenQuad.bind();
+            BufferBuilder quad = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+            quad.addVertex(-1.0F, -1.0F, 0.0F);
+            quad.addVertex(1.0F, -1.0F, 0.0F);
+            quad.addVertex(1.0F, 1.0F, 0.0F);
+            quad.addVertex(-1.0F, 1.0F, 0.0F);
+            this.screenQuad.upload(quad.buildOrThrow());
+            VertexBuffer.unbind();
         }
 
-        this.domeQuad = new VertexBuffer(VertexBuffer.Usage.STATIC);
-        this.domeQuad.bind();
-        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-        builder.addVertex(-1.0F, -1.0F, 0.0F);
-        builder.addVertex(1.0F, -1.0F, 0.0F);
-        builder.addVertex(1.0F, 1.0F, 0.0F);
-        builder.addVertex(-1.0F, 1.0F, 0.0F);
-        this.domeQuad.upload(builder.buildOrThrow());
-        VertexBuffer.unbind();
+        this.gpuMode = mode;
 
-        this.starBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
-        this.starBuffer.bind();
-        this.starBuffer.upload(buildStars());
-        VertexBuffer.unbind();
+        if (this.starBuffer == null) {
+            this.starBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.starBuffer.bind();
+            this.starBuffer.upload(buildStars());
+            VertexBuffer.unbind();
 
-        this.currentStep = -1;
-        Arrays.fill(this.uploadedWeights, -1.0F);
+            this.sunBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.sunBuffer.bind();
+            this.sunBuffer.upload(buildCelestial(SUN_QUAD, 100.0F, 0.0F, 0.0F, 1.0F, 1.0F));
+            VertexBuffer.unbind();
 
-        this.gpuReady = true;
-        LOGGER.info("Sky dome GPU resources ready: 4 x {} KiB tables (sun + moon slots), full LUT {} KiB stays on the CPU",
-                this.base.stepFloats() * 4 / 1024, this.base.display().length * 4 / 1024);
+            this.moonBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.moonBuffer.bind();
+            this.moonBuffer.upload(buildCelestial(MOON_QUAD, -100.0F, 0.0F, 0.0F, 0.25F, 0.5F));
+            VertexBuffer.unbind();
+        }
+
+        ModInfo.LOGGER.info("Sky GPU ready: {} mode, {}x{} table ({} KiB per step), two slots",
+                mode, this.columns, this.rows, this.base.stepFloats() * 4 / 1024);
     }
 
-    private void updateWeather(ClientLevel level, float partialTick) {
-        float rainLevel = Mth.clamp(level.getRainLevel(partialTick), 0.0F, 1.0F);
-        float thunderLevel = Math.min(Mth.clamp(level.getThunderLevel(partialTick), 0.0F, 1.0F), rainLevel);
-        this.weights[0] = 1.0F - rainLevel;
-        this.weights[1] = rainLevel * (1.0F - thunderLevel);
-        this.weights[2] = thunderLevel;
-    }
-
-    private boolean weightsChanged() {
-        for (int i = 0; i < this.weights.length; i++) {
-            if (Math.abs(this.weights[i] - this.uploadedWeights[i]) > 2.0E-3F) {
-                return true;
+    private void releaseModeResources() {
+        for (int i = 0; i < this.slots.length; i++) {
+            if (this.slots[i] != null) {
+                this.slots[i].close();
+                this.slots[i] = null;
             }
         }
-        return false;
+        if (this.screenQuad != null) {
+            this.screenQuad.close();
+            this.screenQuad = null;
+        }
+        for (int i = 0; i < this.textures.length; i++) {
+            if (this.textures[i] != 0) {
+                GlStateManager._deleteTexture(this.textures[i]);
+                this.textures[i] = 0;
+            }
+        }
+        Arrays.fill(this.slotStep, -1);
+        Arrays.fill(this.slotVariant, -1);
+        this.gpuMode = null;
     }
 
-    private void uploadTable(int target, int step, int[] slots) {
-        int floats = this.base.stepFloats();
-        int offset = this.base.stepOffset(step);
-        this.upload.clear();
-        if (this.weights[0] == 1.0F) {
-            this.upload.put(this.luts[0].display(), offset, floats);
+    private int findSlot(int variantIndex, int step) {
+        for (int i = 0; i < 2; i++) {
+            if (this.slotVariant[i] == variantIndex && this.slotStep[i] == step) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int staleSlot(int keepStep) {
+        for (int i = 0; i < 2; i++) {
+            if (this.slotStep[i] != keepStep) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private void sync(SkyMode mode) {
+        ensureGpu(mode);
+
+        int current = findSlot(this.variant, this.currentStep);
+        if (current < 0) {
+            current = staleSlot(this.nextStep);
+            upload(mode, current, this.variant, this.currentStep);
+        }
+
+        int next = findSlot(this.variant, this.nextStep);
+        if (next < 0) {
+            next = staleSlot(this.currentStep);
+            upload(mode, next, this.variant, this.nextStep);
+        }
+
+        this.current = current;
+        this.next = next;
+    }
+
+    private void upload(SkyMode mode, int slot, int variantIndex, int step) {
+        long started = System.nanoTime();
+        SkyLut lut = this.variants[variantIndex];
+        if (mode == SkyMode.DOME) {
+            this.slots[slot].bind();
+            this.slots[slot].upload(domeMesh(lut, step));
+            VertexBuffer.unbind();
         } else {
-            float[] clear = this.luts[0].display();
-            float[] rain = this.luts[1].display();
-            float[] thunder = this.luts[2].display();
-            float wc = this.weights[0];
-            float wr = this.weights[1];
-            float wt = this.weights[2];
-            for (int i = 0; i < floats; i++) {
-                this.upload.put(wc * clear[offset + i] + wr * rain[offset + i] + wt * thunder[offset + i]);
-            }
-        }
-        this.upload.flip();
 
+            float[] table = lut.display();
+            int offset = lut.stepOffset(step);
+            this.upload.clear();
+            for (int row = 0; row < this.rows; row++) {
+                int rowStart = offset + row * this.columns * 3;
+                for (int column = 0; column < this.paddedColumns; column++) {
+                    int i = rowStart + (column == this.columns ? 0 : column * 3);
+                    this.upload.put(encode8(table[i]) / 255.0F);
+                    this.upload.put(encode8(table[i + 1]) / 255.0F);
+                    this.upload.put(encode8(table[i + 2]) / 255.0F);
+                }
+            }
+            this.upload.flip();
+            uploadTable(this.textures[slot]);
+        }
+        this.uploadNanos += System.nanoTime() - started;
+        this.uploadCount++;
+
+        this.slotStep[slot] = step;
+        this.slotVariant[slot] = variantIndex;
+        this.uploads++;
+    }
+
+    private void uploadTable(int texture) {
         int previousUnit = GlStateManager._getActiveTexture();
         int rowLength = GlStateManager._getInteger(GL11.GL_UNPACK_ROW_LENGTH);
         int skipPixels = GlStateManager._getInteger(GL11.GL_UNPACK_SKIP_PIXELS);
@@ -202,10 +348,10 @@ public final class SkyDomeRenderer implements AutoCloseable {
         GlStateManager._pixelStore(GL11.GL_UNPACK_SKIP_ROWS, 0);
         GlStateManager._pixelStore(GL11.GL_UNPACK_ALIGNMENT, 4);
         GlStateManager._activeTexture(TEXTURE_UNIT);
-        GlStateManager._bindTexture(slots[target]);
+        GlStateManager._bindTexture(texture);
         try {
             GlStateManager._texSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0,
-                    this.base.azimuthSamples, this.base.altitudeSamples,
+                    this.paddedColumns, this.rows,
                     GL11.GL_RGB, GL11.GL_FLOAT, MemoryUtil.memAddress(this.upload));
         } finally {
             GlStateManager._bindTexture(0);
@@ -215,77 +361,108 @@ public final class SkyDomeRenderer implements AutoCloseable {
             GlStateManager._pixelStore(GL11.GL_UNPACK_ALIGNMENT, alignment);
             GlStateManager._activeTexture(previousUnit);
         }
-
-        this.uploads++;
     }
 
-    private void uploadPair(int target, int step) {
-        uploadTable(target, step, this.textures);
-        uploadTable(target, this.base.moonStep(step), this.moonTextures);
-    }
+    private MeshData domeMesh(SkyLut lut, int step) {
+        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS,
+                DefaultVertexFormat.POSITION_COLOR);
+        float[] table = lut.display();
+        int offset = lut.stepOffset(step);
 
-    private void updateTables(float angle) {
-        int step = (int) Math.floor(angle) % this.base.sunSteps;
-        int next = (step + 1) % this.base.sunSteps;
-        this.blend = angle - (float) Math.floor(angle);
-        boolean weather = weightsChanged();
+        for (int row = 0; row < this.rows - 1; row++) {
+            float mu0 = 2.0F * row / (this.rows - 1) - 1.0F;
+            float mu1 = 2.0F * (row + 1) / (this.rows - 1) - 1.0F;
+            float cos0 = Mth.cos((float) Math.asin(Mth.clamp(mu0, -1.0F, 1.0F)));
+            float cos1 = Mth.cos((float) Math.asin(Mth.clamp(mu1, -1.0F, 1.0F)));
 
-        if (step != this.currentStep || weather) {
-            if (this.currentStep < 0) {
-                uploadPair(0, step);
-                uploadPair(1, next);
-                this.slot = 0;
-            } else if (!weather && step == (this.currentStep + 1) % this.base.sunSteps) {
-                int stale = this.slot;
-                this.slot = 1 - this.slot;
-                uploadPair(stale, next);
-            } else {
-                uploadPair(0, step);
-                uploadPair(1, next);
-                this.slot = 0;
+            for (int column = 0; column < this.columns; column++) {
+                int nextColumn = (column + 1) % this.columns;
+                float az0 = (float) (Math.PI * 2.0 * column / this.columns);
+                float az1 = (float) (Math.PI * 2.0 * (column + 1) / this.columns);
+
+                vertex(builder, table, offset, row, column, az0, cos0, mu0);
+                vertex(builder, table, offset, row, nextColumn, az1, cos0, mu0);
+                vertex(builder, table, offset, row + 1, nextColumn, az1, cos1, mu1);
+                vertex(builder, table, offset, row + 1, column, az0, cos1, mu1);
             }
-            System.arraycopy(this.weights, 0, this.uploadedWeights, 0, this.weights.length);
-            this.currentStep = step;
         }
+
+        return builder.buildOrThrow();
     }
 
-    public void render(ClientLevel level, Matrix4f frustum, Matrix4f projection, float partialTick, Runnable skyFogSetup) {
+    private void vertex(BufferBuilder builder, float[] table, int offset, int row, int column,
+            float azimuth, float cosAltitude, float mu) {
+        float x = cosAltitude * Mth.cos(azimuth) * 100.0F;
+        float y = mu * 100.0F;
+        float z = cosAltitude * Mth.sin(azimuth) * 100.0F;
+        int i = offset + (row * this.columns + column) * 3;
 
-        ensureGpu();
+        builder.addVertex(x, y, z)
+                .setColor(encode8(table[i]), encode8(table[i + 1]), encode8(table[i + 2]), 255);
+    }
 
-        float timeOfDay = level.getTimeOfDay(partialTick);
-        float angle = sunAngle(level, partialTick);
-        updateWeather(level, partialTick);
-        updateTables(angle);
+    private static int encode8(float linear) {
+        return SRGB8[(int) (Mth.clamp(linear, 0.0F, 1.0F) * 4095.0F + 0.5F)];
+    }
 
-        ShaderInstance sky = this.shader;
-        Matrix4f inverseViewProjection = new Matrix4f(projection).mul(frustum).invert();
-        sky.safeGetUniform("u_invViewProj").set(inverseViewProjection);
-        sky.safeGetUniform("u_t").set(this.blend);
-        sky.safeGetUniform("u_gain").set(displayGain);
-        float sunY = Mth.sin((float) Math.toRadians(this.upperEdgeAngle(angle)));
-        sky.safeGetUniform("u_night").set(nightFactor(sunY));
-        sky.safeGetUniform("u_moonGainR").set(MOON_GAIN * MOON_COLOUR[0]);
-        sky.safeGetUniform("u_moonGainG").set(MOON_GAIN * MOON_COLOUR[1]);
-        sky.safeGetUniform("u_moonGainB").set(MOON_GAIN * MOON_COLOUR[2]);
-        sky.safeGetUniform("u_azSamples").set(this.base.azimuthSamples);
-        sky.safeGetUniform("u_altSamples").set(this.base.altitudeSamples);
-        sky.setSampler("TableCurrent", this.textures[this.slot]);
-        sky.setSampler("TableNext", this.textures[1 - this.slot]);
-        sky.setSampler("TableMoonCurrent", this.moonTextures[this.slot]);
-        sky.setSampler("TableMoonNext", this.moonTextures[1 - this.slot]);
+    private static int[] srgb8Table() {
+        int[] table = new int[4096];
+        for (int i = 0; i < table.length; i++) {
+            table[i] = Math.round(srgbEncode(i / 4095.0F) * 255.0F);
+        }
+        return table;
+    }
+
+    public void render(ClientLevel level, Matrix4f frustum, Matrix4f projection, float partialTick,
+            Runnable skyFogSetup) {
+        SkyMode mode = mode();
+        if (mode == SkyMode.VANILLA) {
+            return;
+        }
+        select(level, partialTick);
+        sync(mode);
 
         skyFogSetup.run();
         RenderSystem.disableBlend();
         RenderSystem.depthMask(false);
-        RenderSystem.disableCull();
-
-        this.domeQuad.bind();
-        this.domeQuad.drawWithShader(frustum, projection, sky);
-        VertexBuffer.unbind();
 
         RenderSystem.enableCull();
 
+        long skyStarted = System.nanoTime();
+        if (mode == SkyMode.DOME) {
+            ShaderInstance shader = this.domeShader;
+
+            shader.safeGetUniform("u_alpha").set(1.0F);
+            this.slots[this.current].bind();
+            this.slots[this.current].drawWithShader(frustum, projection, shader);
+            VertexBuffer.unbind();
+
+            if (this.blend > 1.0E-4F) {
+                RenderSystem.enableBlend();
+                RenderSystem.defaultBlendFunc();
+                shader.safeGetUniform("u_alpha").set(this.blend);
+                this.slots[this.next].bind();
+                this.slots[this.next].drawWithShader(frustum, projection, shader);
+                VertexBuffer.unbind();
+                RenderSystem.disableBlend();
+            }
+        } else {
+            ShaderInstance shader = this.quadShader;
+            shader.safeGetUniform("u_invViewProj").set(new Matrix4f(projection).mul(frustum).invert());
+            shader.safeGetUniform("u_t").set(this.blend);
+            shader.safeGetUniform("u_azSamples").set(this.columns);
+            shader.safeGetUniform("u_altSamples").set(this.rows);
+            shader.setSampler("TableCurrent", this.textures[this.current]);
+            shader.setSampler("TableNext", this.textures[this.next]);
+            this.screenQuad.bind();
+            this.screenQuad.drawWithShader(frustum, projection, shader);
+            VertexBuffer.unbind();
+        }
+        this.skyNanos += System.nanoTime() - skyStarted;
+
+        RenderSystem.enableCull();
+
+        float timeOfDay = level.getTimeOfDay(partialTick);
         PoseStack pose = new PoseStack();
         pose.mulPose(frustum);
 
@@ -295,20 +472,24 @@ public final class SkyDomeRenderer implements AutoCloseable {
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
 
         pose.pushPose();
-        float fade = 1.0F - level.getRainLevel(partialTick);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, fade);
+        float fade = 1.0F - Mth.clamp(level.getRainLevel(partialTick), 0.0F, 1.0F);
         pose.mulPose(Axis.YP.rotationDegrees(-90.0F));
         pose.mulPose(Axis.XP.rotationDegrees(timeOfDay * 360.0F));
         Matrix4f celestial = pose.last().pose();
 
+        ShaderInstance sprites = GameRenderer.getPositionTexShader();
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
+
         RenderSystem.setShaderTexture(0, SUN_TEXTURE);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, fade);
-        drawSunQuad(celestial);
+        this.sunBuffer.bind();
+        this.sunBuffer.drawWithShader(celestial, projection, sprites);
+        VertexBuffer.unbind();
 
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, fade);
         RenderSystem.setShaderTexture(0, MOON_TEXTURE);
-        drawMoonQuad(celestial, 0);
+        this.moonBuffer.bind();
+        this.moonBuffer.drawWithShader(celestial, projection, sprites);
+        VertexBuffer.unbind();
 
         float starBrightness = level.getStarBrightness(partialTick) * fade;
         if (starBrightness > 0.0F) {
@@ -325,42 +506,31 @@ public final class SkyDomeRenderer implements AutoCloseable {
         RenderSystem.defaultBlendFunc();
         pose.popPose();
         RenderSystem.depthMask(true);
+        this.frames++;
     }
 
-    private static void drawSunQuad(Matrix4f pose) {
+    private static MeshData buildCelestial(float size, float y, float u0, float v0, float u1, float v1) {
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        builder.addVertex(pose, -SUN_QUAD, 100.0F, -SUN_QUAD).setUv(0.0F, 0.0F);
-        builder.addVertex(pose, SUN_QUAD, 100.0F, -SUN_QUAD).setUv(1.0F, 0.0F);
-        builder.addVertex(pose, SUN_QUAD, 100.0F, SUN_QUAD).setUv(1.0F, 1.0F);
-        builder.addVertex(pose, -SUN_QUAD, 100.0F, SUN_QUAD).setUv(0.0F, 1.0F);
-        BufferUploader.drawWithShader(builder.buildOrThrow());
-    }
-
-    private static void drawMoonQuad(Matrix4f pose, int moonPhase) {
-        int u = moonPhase % 4;
-        int v = moonPhase / 4 % 2;
-        float u0 = (float) (u + 0) / 4.0F;
-        float v0 = (float) (v + 0) / 2.0F;
-        float u1 = (float) (u + 1) / 4.0F;
-        float v1 = (float) (v + 1) / 2.0F;
-
-        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        builder.addVertex(pose, -MOON_QUAD, -100.0F, MOON_QUAD).setUv(u1, v1);
-        builder.addVertex(pose, MOON_QUAD, -100.0F, MOON_QUAD).setUv(u0, v1);
-        builder.addVertex(pose, MOON_QUAD, -100.0F, -MOON_QUAD).setUv(u0, v0);
-        builder.addVertex(pose, -MOON_QUAD, -100.0F, -MOON_QUAD).setUv(u1, v0);
-        BufferUploader.drawWithShader(builder.buildOrThrow());
+        builder.addVertex(-size, y, -size).setUv(u0, v0);
+        builder.addVertex(size, y, -size).setUv(u1, v0);
+        builder.addVertex(size, y, size).setUv(u1, v1);
+        builder.addVertex(-size, y, size).setUv(u0, v1);
+        return builder.buildOrThrow();
     }
 
     private static MeshData buildStars() {
         RandomSource random = RandomSource.create(10842L);
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
 
-        for (int i = 0; i < 1500; i++) {
+        int count = AtmosphereSettings.starCount;
+        float sizeVariation = AtmosphereSettings.starSizeVariation;
+        float minimumSize = AtmosphereSettings.minimumStarSize;
+
+        for (int i = 0; i < count; i++) {
             float x = random.nextFloat() * 2.0F - 1.0F;
             float y = random.nextFloat() * 2.0F - 1.0F;
             float z = random.nextFloat() * 2.0F - 1.0F;
-            float size = 0.15F + random.nextFloat() * 0.1F;
+            float size = minimumSize + random.nextFloat() * sizeVariation;
             float lengthSq = Mth.lengthSquared(x, y, z);
             if (lengthSq <= 0.010000001F || lengthSq >= 1.0F) {
                 continue;
@@ -377,71 +547,17 @@ public final class SkyDomeRenderer implements AutoCloseable {
         return builder.buildOrThrow();
     }
 
-    public boolean horizonColor(ClientLevel level, float partialTick, float dirX, float dirZ, float[] out) {
-        if (!this.gpuReady) {
+    public boolean horizonColour(ClientLevel level, float partialTick, float dirX, float dirZ, float[] out) {
+        if (!isReady()) {
             return false;
         }
-        float angle = sunAngle(level, partialTick);
-        int step = (int) Math.floor(angle) % this.base.sunSteps;
-        int next = (step + 1) % this.base.sunSteps;
-        float t = angle - (float) Math.floor(angle);
-
-        float length = Mth.sqrt(dirX * dirX + dirZ * dirZ);
-        if (length < 1.0E-4F) {
-            dirX = 1.0F;
-            dirZ = 0.0F;
-        } else {
-            dirX /= length;
-            dirZ /= length;
-        }
-
-        float night = nightFactor(Mth.sin((float) Math.toRadians(this.upperEdgeAngle(angle))));
-        Arrays.fill(this.blended, 0.0F);
-        Arrays.fill(this.moonBlended, 0.0F);
-        for (int v = 0; v < this.luts.length; v++) {
-            if (this.weights[v] == 0.0F) {
-                continue;
-            }
-            this.luts[v].sample(dirX, 0.02F, dirZ, step, next, t, this.scratch);
-            float wr = this.weights[v];
-            for (int i = 0; i < 3; i++) {
-                this.blended[i] += wr * this.scratch[i];
-            }
-            if (night > 0.0F) {
-                int moon = this.luts[v].moonStep(step);
-                int moonNext = this.luts[v].moonStep(next);
-                this.luts[v].sample(dirX, 0.02F, dirZ, moon, moonNext, t, this.scratch);
-                for (int i = 0; i < 3; i++) {
-                    this.moonBlended[i] += wr * MOON_GAIN * MOON_COLOUR[i] * this.scratch[i];
-                }
-            }
-        }
-        moonDisplay(this.moonBlended);
+        select(level, partialTick);
+        SkyLut lut = this.variants[this.variant];
+        lut.sample(dirX, 0.02F, dirZ, this.currentStep, this.nextStep, this.blend, out);
         for (int i = 0; i < 3; i++) {
-            out[i] = srgbEncode(Mth.clamp((this.blended[i] + night * this.moonBlended[i]) * displayGain, 0.0F, 1.0F));
+            out[i] = srgbEncode(Mth.clamp(out[i], 0.0F, 1.0F));
         }
         return true;
-    }
-
-    private static void moonDisplay(float[] colour) {
-        float peak = Math.max(colour[0], Math.max(colour[1], colour[2]));
-        float scale = 1.0F / (1.0F + peak * MOON_GLARE_KNEE);
-        for (int i = 0; i < 3; i++) {
-            colour[i] *= scale;
-        }
-        float luminance = 0.2126F * colour[0] + 0.7152F * colour[1] + 0.0722F * colour[2];
-        for (int i = 0; i < 3; i++) {
-            colour[i] = luminance + (colour[i] - luminance) * MOON_SATURATION;
-        }
-    }
-
-    private static float nightFactor(float sunY) {
-        return Mth.clamp((0.02F - sunY) / 0.14F, 0.0F, 1.0F);
-    }
-
-    private float upperEdgeAngle(float angle) {
-        float radius = this.base.sunRadiusDegrees;
-        return angle > 90.0F && angle < 270.0F ? angle - radius : angle + radius;
     }
 
     private static float srgbEncode(float linear) {
@@ -452,22 +568,21 @@ public final class SkyDomeRenderer implements AutoCloseable {
     @Override
     public void close() {
         this.closed = true;
-        for (int[] slots : new int[][] {this.textures, this.moonTextures}) {
-            for (int i = 0; i < slots.length; i++) {
-                if (slots[i] != 0) {
-                    GlStateManager._deleteTexture(slots[i]);
-                    slots[i] = 0;
-                }
-            }
+        if (instance == this) {
+            instance = null;
         }
-        if (this.domeQuad != null) {
-            this.domeQuad.close();
-            this.domeQuad = null;
-        }
+        releaseModeResources();
         if (this.starBuffer != null) {
             this.starBuffer.close();
             this.starBuffer = null;
         }
-        this.gpuReady = false;
+        if (this.sunBuffer != null) {
+            this.sunBuffer.close();
+            this.sunBuffer = null;
+        }
+        if (this.moonBuffer != null) {
+            this.moonBuffer.close();
+            this.moonBuffer = null;
+        }
     }
 }
