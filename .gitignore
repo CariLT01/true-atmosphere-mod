@@ -1,8 +1,28 @@
+# Gradle build output
 build/
-internal/
-run/
-screenshots/
-.idea/
 .gradle/
+out/
+.gradletasknamecache
+gradle-app.setting
 
-src/main/resources/assets/trueatmosphere/sky/*
+# JVM and Gradle crash artifacts
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Gradle dev runs: Loom and NeoForge MDG start the game in <project>/run
+run/
+dist/
+
+# IDE
+.idea/
+*.iml
+
+# Python helper scripts in scripts/
+__pycache__/
+*.pyc
+
+# Local notes and captures
+internal/
+screenshots/
+common/resources/assets/trueatmosphere/sky/*

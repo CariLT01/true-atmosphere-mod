@@ -1,0 +1,38 @@
+{
+    "vertex": "trueatmosphere:core/sky_quad",
+    "fragment": "trueatmosphere:core/sky_quad",
+    "samplers": [
+        {
+            "name": "TableCurrent"
+        },
+        {
+            "name": "TableNext"
+        }
+    ],
+    "uniforms": [
+        {
+            "name": "u_invViewProj",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        },
+        {
+            "name": "u_t",
+            "type": "float",
+            "count": 1,
+            "values": [0.0]
+        },
+        {
+            "name": "u_azSamples",
+            "type": "int",
+            "count": 1,
+            "values": [64]
+        },
+        {
+            "name": "u_altSamples",
+            "type": "int",
+            "count": 1,
+            "values": [64]
+        }
+    ]
+}

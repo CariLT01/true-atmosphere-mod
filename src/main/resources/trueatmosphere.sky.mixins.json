@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.carilt01.trueatmosphere.mixin",
+//? if mc >= 26.1 {
+  "compatibilityLevel": "JAVA_25",
+//?} else {
+  "compatibilityLevel": "JAVA_21",
+//?}
+//? if fabric && mc < 1.21.5 {
+  "refmap": "trueatmosphere.refmap.json",
+//?}
+  "client": [
+    "GameRendererMixin",
+//? if mc >= 1.21.2 {
+    "SkyRendererMixin"
+//?}
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

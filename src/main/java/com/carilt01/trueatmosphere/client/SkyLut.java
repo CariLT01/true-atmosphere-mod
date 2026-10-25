@@ -12,7 +12,11 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonParseException;
 import com.mojang.logging.LogUtils;
 
+//? if mc >= 1.21.11 {
+import net.minecraft.resources.Identifier;
+//?} else {
 import net.minecraft.resources.ResourceLocation;
+//?}
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.Mth;
 
@@ -26,7 +30,6 @@ public final class SkyLut {
     public static final String CLEAR = "clear";
     public static final String RAIN = "rain";
     public static final String THUNDER = "thunder";
-
     public static final String[] VARIANTS = {CLEAR, RAIN, THUNDER};
 
     private final float[] display;
@@ -46,8 +49,13 @@ public final class SkyLut {
 
     public static SkyLut load(ResourceManager resources, String variant) throws IOException {
         String stem = CLEAR.equals(variant) ? "sky/sky_lut" : "sky/sky_lut_" + variant;
+        //? if mc >= 1.21.11 {
+        Identifier metaId = Identifier.fromNamespaceAndPath(ModInfo.MODID, stem + ".json");
+        Identifier dataId = Identifier.fromNamespaceAndPath(ModInfo.MODID, stem + ".npy");
+        //?} else {
         ResourceLocation metaId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".json");
         ResourceLocation dataId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".npy");
+        //?}
 
         JsonObject meta;
         try (InputStream in = resources.getResourceOrThrow(metaId).open();
@@ -134,7 +142,11 @@ public final class SkyLut {
         out[2] = Mth.lerp(blend, a2, b2);
     }
 
+    //? if mc >= 1.21.11 {
+    private static float[] readNpyFloats(InputStream in, Identifier dataId, int expectedFloats)
+    //?} else {
     private static float[] readNpyFloats(InputStream in, ResourceLocation dataId, int expectedFloats)
+    //?}
             throws IOException {
         byte[] bytes = in.readAllBytes();
         if (bytes.length < 10

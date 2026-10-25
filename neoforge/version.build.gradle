@@ -1,0 +1,99 @@
+def matrixFile = new File(rootDir.parentFile, 'versions.json')
+def matrix = new groovy.json.JsonSlurper().parse(matrixFile)
+def entry = matrix.versions.find { it.mc == project.name }
+if (entry == null) {
+    throw new GradleException("versions.json has no entry for Minecraft ${project.name}")
+}
+
+apply plugin: 'java-library'
+apply plugin: 'maven-publish'
+apply plugin: 'net.neoforged.moddev'
+
+version = matrix.mod_version
+group = matrix.mod_group_id
+
+base {
+    archivesName = "${matrix.mod_id}-${entry.mc}-neoforge"
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(entry.java)
+
+project.ext.atmoLoader = 'neoforge'
+apply from: new File(rootDir.parentFile, 'gradle/variant-sources.gradle')
+
+tasks.named('processResources').configure {
+    exclude '**.cache'
+}
+
+neoForge {
+    version = entry.neoforge
+
+    runs {
+        client {
+            client()
+            gameDirectory = project.file('run/client')
+            systemProperty 'neoforge.enabledGameTestNamespaces', matrix.mod_id
+            if (project.hasProperty('skyMode')) {
+                systemProperty 'trueatmosphere.sky', project.skyMode
+            }
+            if (project.hasProperty('gameArgs')) {
+                programArguments.addAll project.property('gameArgs').toString().split(' ')
+            }
+        }
+
+        server {
+            server()
+            gameDirectory = project.file('run/server')
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', matrix.mod_id
+        }
+
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = project.file('run/gameTestServer')
+            systemProperty 'neoforge.enabledGameTestNamespaces', matrix.mod_id
+        }
+
+    }
+
+    mods {
+        "${matrix.mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            minecraft_version      : entry.mc,
+            minecraft_version_range: "[${entry.mc}]",
+            neo_version            : entry.neoforge,
+            loader_version_range   : '[1,)',
+            mod_id                 : matrix.mod_id,
+            mod_name               : matrix.mod_name,
+            mod_license            : matrix.mod_license,
+            mod_version            : matrix.mod_version,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}

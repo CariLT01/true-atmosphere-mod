@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 
@@ -71,7 +72,7 @@ public final class SkySelfTest {
         }
 
         if (!prepared) {
-            minecraft.options.hideGui = true;
+            hideHud(minecraft);
             serverCommand(minecraft, "gamerule doDaylightCycle false");
             serverCommand(minecraft, "gamerule doWeatherCycle false");
             serverCommand(minecraft, "weather " + (weather() == null ? "clear" : weather()) + " 1000000");
@@ -100,7 +101,7 @@ public final class SkySelfTest {
 
         if (!timeArrived(minecraft, times[index]) && retries++ < 4) {
             LOGGER.warn("Time did not take (wanted {}, have {}), retrying",
-                    times[index], minecraft.level.getDayTime());
+                    times[index], clockTime(minecraft.level));
             applyTime(minecraft, times[index]);
             ticks = 0;
             settle = SETTLE_TICKS;
@@ -128,7 +129,7 @@ public final class SkySelfTest {
     }
 
     private static boolean timeArrived(Minecraft minecraft, int dayTime) {
-        long actual = minecraft.level.getDayTime();
+        long actual = clockTime(minecraft.level);
         long want = Math.floorMod(dayTime, 24000L);
         long have = Math.floorMod(actual, 24000L);
         return Math.abs(have - want) < 200 || Math.abs(have - want) > 23800;
@@ -149,7 +150,37 @@ public final class SkySelfTest {
     }
 
     private static String playerName(Minecraft minecraft) {
+        //? if mc >= 1.21.5 {
+        return minecraft.player == null ? "Dev" : minecraft.player.getScoreboardName();
+        //?} else {
         return minecraft.player == null ? "Dev" : minecraft.player.getGameProfile().getName();
+        //?}
+    }
+
+    private static long clockTime(ClientLevel level) {
+        //? if mc >= 26.1 {
+        return level.getOverworldClockTime();
+        //?} else {
+        return level.getDayTime();
+        //?}
+    }
+
+    private static float sunAngle(Minecraft minecraft) {
+        //? if mc >= 1.21.11 {
+        return SkyDomeRenderer.sunAngleDegrees;
+        //?} else {
+        return SkyDomeRenderer.sunAngle(minecraft.level, 1.0F);
+        //?}
+    }
+
+    private static void hideHud(Minecraft minecraft) {
+        //? if mc >= 26.2 {
+        if (!minecraft.gui.hud.isHidden()) {
+            minecraft.gui.hud.toggle();
+        }
+        //?} else {
+        minecraft.options.hideGui = true;
+        //?}
     }
 
     private static void teleport(Minecraft minecraft, double height) {
@@ -162,7 +193,12 @@ public final class SkySelfTest {
     }
 
     private static void applyTime(Minecraft minecraft, int dayTime) {
-        serverCommand(minecraft, "time set " + dayTime);
+        long current = minecraft.level == null ? 0L : clockTime(minecraft.level);
+        long want = Math.floorMod(dayTime, 24000L);
+
+        long target = current + Math.floorMod(want - Math.floorMod(current, 24000L), 24000L);
+        target += Math.floorMod(-Math.floorDiv(target, 24000L), 8L) * 24000L;
+        serverCommand(minecraft, "time add " + (target - current));
     }
 
     private static void serverCommand(Minecraft minecraft, String command) {
@@ -183,12 +219,15 @@ public final class SkySelfTest {
                 + "_yaw" + Math.round(yaws[index])
                 + "_p" + Math.round(pitches[index])
                 + "_y" + Math.round(heights[index]) + ".png";
-        float angle = SkyDomeRenderer.sunAngle(minecraft.level, 1.0F);
+        float angle = sunAngle(minecraft);
         LOGGER.info("shot {}: requested {} actual {} -> sun angle {} (elevation {} deg)",
-                index, times[index], minecraft.level.getDayTime(), angle,
+                index, times[index], clockTime(minecraft.level), angle,
                 Math.round(Math.toDegrees(Math.asin(Math.sin(Math.toRadians(angle))))));
         LOGGER.info("shot {}: expected celestial angle {}", index, targetAngle(times[index]));
         SkyDomeRenderer renderer = SkyDomeRenderer.instance;
+        //? if mc >= 26.1 {
+        logExpectation(index, minecraft, renderer);
+        //?}
         long uploads = renderer == null ? -1L : renderer.uploads();
         LOGGER.info("shot {}: {}", index, uploads < 0
                 ? "no renderer"
@@ -196,9 +235,39 @@ public final class SkySelfTest {
         LOGGER.info("shot {}: rain {} thunder {}", index,
                 minecraft.level.getRainLevel(1.0F), minecraft.level.getThunderLevel(1.0F));
         lastUploads = uploads;
+        //? if mc >= 26.2 {
+        Screenshot.grab(minecraft.gameDirectory, name, minecraft.gameRenderer.mainRenderTarget(), 1,
+                message -> LOGGER.info("Screenshot: {}", message.getString()));
+        //?} else if mc >= 1.21.6 {
+        Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(), 1,
+                message -> LOGGER.info("Screenshot: {}", message.getString()));
+        //?} else {
         Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(),
                 message -> LOGGER.info("Screenshot: {}", message.getString()));
+        //?}
     }
+
+    //? if mc >= 26.1 {
+    private static void logExpectation(int shot, Minecraft minecraft, SkyDomeRenderer renderer) {
+        if (renderer == null || minecraft.level == null) {
+            return;
+        }
+        double yaw = Math.toRadians(yaws[shot]);
+        double pitch = Math.toRadians(pitches[shot]);
+        float dx = (float) (-Math.sin(yaw) * Math.cos(pitch));
+        float dy = (float) (-Math.sin(pitch));
+        float dz = (float) (Math.cos(yaw) * Math.cos(pitch));
+
+        float[] expected = new float[3];
+        if (!renderer.skyColour(minecraft.level, dx, dy, dz, expected)) {
+            return;
+        }
+        LOGGER.info("shot {}: table srgb ({}, {}, {}) for forward ({}, {}, {})",
+                shot, Math.round(expected[0] * 255.0F), Math.round(expected[1] * 255.0F),
+                Math.round(expected[2] * 255.0F),
+                String.format("%.3f", dx), String.format("%.3f", dy), String.format("%.3f", dz));
+    }
+    //?}
 
     private static String weather() {
         if (WEATHER == null || WEATHER.isBlank() || "clear".equalsIgnoreCase(WEATHER)) {

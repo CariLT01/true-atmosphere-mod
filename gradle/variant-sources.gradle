@@ -1,0 +1,269 @@
+import groovy.json.JsonSlurper
+
+class VariantExpr {
+    private final List<String> tokens
+    private final String mc
+    private final String era
+    private final String loader
+    private int pos
+
+    VariantExpr(String expr, String mc, String era, String loader) {
+        this.tokens = (expr =~ /==|!=|<=|>=|&&|\|\||\d+(?:\.\d+)*|[A-Za-z_][A-Za-z0-9_]*|[<>!(),\[\]]/).collect { it }
+        this.mc = mc
+        this.era = era
+        this.loader = loader
+    }
+
+    boolean evaluate() {
+        boolean value = parseOr()
+        if (this.pos != this.tokens.size()) {
+            throw new IllegalArgumentException("trailing '${this.tokens[this.pos..-1].join(' ')}' in condition")
+        }
+        return value
+    }
+
+    private boolean parseOr() {
+        boolean value = parseAnd()
+        while (peek() == '||') {
+            this.pos++
+            boolean right = parseAnd()
+            value = value || right
+        }
+        return value
+    }
+
+    private boolean parseAnd() {
+        boolean value = parseUnary()
+        while (peek() == '&&') {
+            this.pos++
+            boolean right = parseUnary()
+            value = value && right
+        }
+        return value
+    }
+
+    private boolean parseUnary() {
+        if (peek() == '!') {
+            this.pos++
+            return !parseUnary()
+        }
+        if (peek() == '(') {
+            this.pos++
+            boolean value = parseOr()
+            expect(')')
+            return value
+        }
+        return parseAtom()
+    }
+
+    private boolean parseAtom() {
+        String token = next()
+        if (token == 'fabric' || token == 'neoforge') {
+            return this.loader == token
+        }
+        if (token != 'mc' && token != 'era') {
+            throw new IllegalArgumentException("unknown name '$token' (expected mc, era, fabric or neoforge)")
+        }
+
+        String op = next()
+        if (op == 'in') {
+            expect('[')
+            Set<String> options = new LinkedHashSet<>()
+            while (peek() != ']') {
+                options.add(next())
+                if (peek() == ',') {
+                    this.pos++
+                }
+            }
+            expect(']')
+            return options.contains(token == 'mc' ? this.mc : this.era)
+        }
+
+        String value = next()
+        if (token == 'era') {
+            switch (op) {
+                case '==': return this.era == value
+                case '!=': return this.era != value
+                default: throw new IllegalArgumentException("era only supports == and !=, not '$op'")
+            }
+        }
+
+        int order = compareVersions(this.mc, value)
+        switch (op) {
+            case '==': return order == 0
+            case '!=': return order != 0
+            case '<': return order < 0
+            case '<=': return order <= 0
+            case '>': return order > 0
+            case '>=': return order >= 0
+            default: throw new IllegalArgumentException("unknown comparison '$op'")
+        }
+    }
+
+    private static int compareVersions(String left, String right) {
+        List<Integer> a = left.tokenize('.').collect { it as int }
+        List<Integer> b = right.tokenize('.').collect { it as int }
+        int size = Math.max(a.size(), b.size())
+        for (int i = 0; i < size; i++) {
+            int x = i < a.size() ? a[i] : 0
+            int y = i < b.size() ? b[i] : 0
+            if (x != y) {
+                return x <=> y
+            }
+        }
+        return 0
+    }
+
+    private String peek() {
+        return this.pos < this.tokens.size() ? this.tokens[this.pos] : null
+    }
+
+    private String next() {
+        if (this.pos >= this.tokens.size()) {
+            throw new IllegalArgumentException('condition ended early')
+        }
+        return this.tokens[this.pos++]
+    }
+
+    private void expect(String token) {
+        String actual = next()
+        if (actual != token) {
+            throw new IllegalArgumentException("expected '$token', found '$actual'")
+        }
+    }
+}
+
+class VariantSource {
+    private static final java.util.regex.Pattern DIRECTIVE =
+            ~/^\s*(?:\/\/|\/\*|#)\?(.*?)(?:\*\/)?\s*$/
+
+    static String process(String text, Closure<Boolean> evaluator, String name) {
+        StringBuilder out = new StringBuilder(text.length())
+        List<Map<String, Object>> stack = []
+        for (String line : text.readLines()) {
+            def match = (line =~ DIRECTIVE)
+            if (match.matches()) {
+                String directive = match[0][1].trim().replaceAll(/\*\/$/, '').trim()
+                if (directive == '}') {
+                    if (stack.isEmpty()) {
+                        throw new IllegalStateException("$name: '//?}' without a matching '//? if'")
+                    }
+                    stack.remove(stack.size() - 1)
+                } else if (directive.startsWith('} else')) {
+                    if (stack.isEmpty()) {
+                        throw new IllegalStateException("$name: '//?} else' without a matching '//? if'")
+                    }
+                    Map<String, Object> frame = stack.remove(stack.size() - 1)
+                    boolean parent = (boolean) frame.parentActive
+                    String rest = directive.substring('} else'.length()).trim()
+                    boolean plain = rest.isEmpty() || rest == '{'
+                    if (plain && (boolean) frame.seenElse) {
+                        throw new IllegalStateException("$name: second 'else' for one '//? if'")
+                    }
+                    boolean active
+                    if (plain) {
+                        active = parent && !((boolean) frame.taken)
+                    } else if (rest.startsWith('if ') && rest.endsWith('{')) {
+                        String expr = rest.substring(3, rest.length() - 1).trim()
+                        active = parent && !((boolean) frame.taken) && evaluator(expr)
+                    } else {
+                        throw new IllegalStateException("$name: cannot parse '${directive}'")
+                    }
+                    stack.add([parentActive: parent, active: active,
+                               taken: active || (boolean) frame.taken,
+                               seenElse: plain || (boolean) frame.seenElse])
+                } else if (directive.startsWith('if ') && directive.endsWith('{')) {
+                    String expr = directive.substring(3, directive.length() - 1).trim()
+                    boolean parent = stack.isEmpty() || (boolean) stack[-1].active
+                    boolean active = parent && evaluator(expr)
+                    stack.add([parentActive: parent, active: active, taken: active, seenElse: false])
+                } else {
+                    throw new IllegalStateException("$name: cannot parse '${directive}' (expected 'if <cond> {', '} else {' or '}')")
+                }
+                continue
+            }
+
+            if (stack.isEmpty() || (boolean) stack[-1].active) {
+                out.append(line).append('\n')
+            }
+        }
+        if (!stack.isEmpty()) {
+            throw new IllegalStateException("$name: ${stack.size()} unclosed '//? if' block(s)")
+        }
+        return out.toString()
+    }
+}
+
+def atmoLoader = project.findProperty('atmoLoader')
+if (atmoLoader == null) {
+    throw new GradleException('set project.ext.atmoLoader to fabric or neoforge before applying gradle/variant-sources.gradle')
+}
+
+def sharedRoot = project.rootDir.parentFile
+def matrix = new JsonSlurper().parse(new File(sharedRoot, 'versions.json'))
+def entry = matrix.versions.find { it.mc == project.name }
+if (entry == null) {
+    throw new GradleException("versions.json has no entry for Minecraft ${project.name}")
+}
+
+def renderer = entry.renderer ?: entry.era
+def roots = [
+        new File(sharedRoot, 'src/main'),
+        new File(sharedRoot, "src/${atmoLoader}"),
+        new File(sharedRoot, "src/sky-${renderer}"),
+].findAll { it.isDirectory() }
+if (roots.isEmpty()) {
+    throw new GradleException("no source tree for ${entry.mc}; expected ${sharedRoot}/src/main")
+}
+
+def generated = new File(project.buildDir, 'variant')
+def conditions = { String expr ->
+    new VariantExpr(expr, entry.mc, entry.era, atmoLoader).evaluate()
+}
+def binaryExtensions = ['.npy', '.png', '.ogg', '.zip'] as Set
+
+def generateVariant = tasks.register('generateVariant') {
+    group = 'build'
+    description = "Resolves the shared source tree into ${entry.mc} (${atmoLoader}) sources"
+    inputs.files(roots)
+    inputs.property('loader', atmoLoader)
+    inputs.property('mc', entry.mc)
+    inputs.property('era', entry.era)
+    inputs.property('renderer', renderer)
+    outputs.dir(generated)
+
+    doLast {
+        project.delete(generated)
+        Map<String, File> origins = [:]
+        roots.each { File root ->
+            root.eachFileRecurse { File file ->
+                if (!file.isFile()) {
+                    return
+                }
+                String relative = root.toPath().relativize(file.toPath()).toString()
+                File previous = origins.put(relative, root)
+                if (previous != null) {
+                    throw new GradleException("${relative} is defined in both ${previous.name} and ${root.name}; " +
+                            'a file may only live in one tree')
+                }
+                File target = new File(generated, relative)
+                target.parentFile.mkdirs()
+                if (binaryExtensions.any { file.name.endsWith(it) }) {
+                    target.bytes = file.bytes
+                } else {
+                    String processed = VariantSource.process(file.getText('UTF-8'), conditions, relative)
+                    target.setText(processed, 'UTF-8')
+                }
+            }
+        }
+    }
+}
+
+sourceSets.main.java.setSrcDirs([new File(generated, 'java').path])
+sourceSets.main.resources.setSrcDirs([new File(generated, 'resources').path])
+tasks.named('compileJava').configure { dependsOn generateVariant }
+tasks.named('processResources').configure { dependsOn generateVariant }
+
+tasks.matching { it.name in ['sourcesJar', 'remapSourcesJar'] }.configureEach {
+    dependsOn generateVariant
+}

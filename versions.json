@@ -1,0 +1,150 @@
+{
+  "mod_version": "0.3.2-alpha",
+  "mod_id": "trueatmosphere",
+  "mod_name": "True Atmosphere",
+  "mod_license": "All Rights Reserved",
+  "mod_group_id": "com.carilt01.trueatmosphere",
+  "_comment": "era picks the shared source tree in common/era-<era>/; java is the toolchain. NeoForge lines that never left beta are pinned to their last beta, because that is the only artifact that exists for that Minecraft version.",
+  "versions": [
+    {
+      "mc": "1.21.1",
+      "era": "a",
+      "neoforge": "21.1.264",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.116.17+1.21.1",
+      "java": 21
+    },
+    {
+      "mc": "1.21.2",
+      "era": "b",
+      "neoforge": "21.2.1-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.106.1+1.21.2",
+      "java": 21
+    },
+    {
+      "mc": "1.21.3",
+      "era": "b",
+      "neoforge": "21.3.100",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.114.1+1.21.3",
+      "java": 21
+    },
+    {
+      "mc": "1.21.4",
+      "era": "b",
+      "neoforge": "21.4.161",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.119.4+1.21.4",
+      "java": 21
+    },
+    {
+      "mc": "1.21.5",
+      "era": "c5",
+      "neoforge": "21.5.101",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.128.2+1.21.5",
+      "java": 21,
+      "renderer": "c5"
+    },
+    {
+      "mc": "1.21.6",
+      "era": "c",
+      "neoforge": "21.6.20-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.128.2+1.21.6",
+      "java": 21,
+      "renderer": "c"
+    },
+    {
+      "mc": "1.21.7",
+      "era": "c",
+      "neoforge": "21.7.25-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.129.0+1.21.7",
+      "java": 21,
+      "renderer": "c"
+    },
+    {
+      "mc": "1.21.8",
+      "era": "c",
+      "neoforge": "21.8.57",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.136.1+1.21.8",
+      "java": 21,
+      "renderer": "c"
+    },
+    {
+      "mc": "1.21.9",
+      "era": "d",
+      "neoforge": "21.9.16-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.134.1+1.21.9",
+      "java": 21,
+      "renderer": "c"
+    },
+    {
+      "mc": "1.21.10",
+      "era": "d",
+      "neoforge": "21.10.64",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.138.4+1.21.10",
+      "java": 21,
+      "renderer": "c"
+    },
+    {
+      "mc": "1.21.11",
+      "era": "e",
+      "neoforge": "21.11.48",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.141.6+1.21.11",
+      "java": 21,
+      "renderer": "e"
+    },
+    {
+      "mc": "26.1",
+      "era": "f1",
+      "neoforge": "26.1.0.19-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.145.1+26.1",
+      "java": 25,
+      "renderer": "f1"
+    },
+    {
+      "mc": "26.1.1",
+      "era": "f1",
+      "neoforge": "26.1.1.15-beta",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.145.4+26.1.1",
+      "java": 25,
+      "renderer": "f1"
+    },
+    {
+      "mc": "26.1.2",
+      "era": "f1",
+      "neoforge": "26.1.2.122",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.155.3+26.1.2",
+      "java": 25,
+      "renderer": "f1"
+    },
+    {
+      "mc": "26.2",
+      "era": "f0",
+      "neoforge": "26.2.0.93",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.161.0+26.2",
+      "java": 25,
+      "renderer": "f0"
+    },
+    {
+      "mc": "26.3",
+      "era": "f",
+      "neoforge": "26.3.0.97",
+      "fabric_loader": "0.20.1",
+      "fabric_api": "0.165.0+26.3",
+      "java": 25,
+      "renderer": "f"
+    }
+  ]
+}

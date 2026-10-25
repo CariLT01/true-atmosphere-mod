@@ -329,7 +329,13 @@ public final class SkyBench {
     private static void prepare(Minecraft minecraft) {
         minecraft.options.enableVsync().set(false);
         minecraft.options.framerateLimit().set(FRAMERATE_CAP);
+        //? if mc >= 26.2 {
+        if (!minecraft.gui.hud.isHidden()) {
+            minecraft.gui.hud.toggle();
+        }
+        //?} else {
         minecraft.options.hideGui = true;
+        //?}
 
         serverCommand(minecraft, "gamerule doDaylightCycle true");
         serverCommand(minecraft, "gamerule doWeatherCycle false");
@@ -363,7 +369,11 @@ public final class SkyBench {
     }
 
     private static String playerName(Minecraft minecraft) {
+        //? if mc >= 1.21.5 {
+        return minecraft.player == null ? "Dev" : minecraft.player.getScoreboardName();
+        //?} else {
         return minecraft.player == null ? "Dev" : minecraft.player.getGameProfile().getName();
+        //?}
     }
 
     private static void serverCommand(Minecraft minecraft, String command) {

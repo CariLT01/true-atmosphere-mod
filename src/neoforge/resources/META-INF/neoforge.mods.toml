@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+description='''
+Physically accurate atmosphere at vanilla performance!
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# NeoForge's sky hook is a mixin from 1.21.9 on; 1.21.1-1.21.8 hand the sky pass to the dimension
+# effects instead, and a declared-but-unused mixin config fails the load.
+#? if mc >= 1.21.9 {
+[[mixins]]
+config="trueatmosphere.sky.mixins.json"
+#?}

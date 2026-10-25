@@ -1,0 +1,86 @@
+def matrixFile = new File(rootDir.parentFile, 'versions.json')
+def matrix = new groovy.json.JsonSlurper().parse(matrixFile)
+def entry = matrix.versions.find { it.mc == project.name }
+if (entry == null) {
+    throw new GradleException("versions.json has no entry for Minecraft ${project.name}")
+}
+
+def remapped = !entry.era.startsWith('f')
+
+apply plugin: remapped ? 'fabric-loom' : 'net.fabricmc.fabric-loom'
+
+version = matrix.mod_version
+group = matrix.mod_group_id
+
+base {
+    archivesName = "${matrix.mod_id}-${entry.mc}-fabric"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(entry.java)
+    withSourcesJar()
+}
+
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${entry.mc}"
+
+    if (remapped) {
+        mappings loom.officialMojangMappings()
+        modImplementation "net.fabricmc:fabric-loader:${entry.fabric_loader}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${entry.fabric_api}"
+    } else {
+        implementation "net.fabricmc:fabric-loader:${entry.fabric_loader}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${entry.fabric_api}"
+    }
+}
+
+project.ext.atmoLoader = 'fabric'
+apply from: new File(rootDir.parentFile, 'gradle/variant-sources.gradle')
+
+loom {
+    mods {
+        "${matrix.mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+
+    runs {
+        client {
+            client()
+
+            if (project.hasProperty('gameArgs')) {
+                programArgs project.property('gameArgs').toString().split(' ')
+            }
+        }
+    }
+
+    if (remapped) {
+        mixin {
+            defaultRefmapName = 'trueatmosphere.refmap.json'
+        }
+    }
+}
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            version           : matrix.mod_version,
+            loader_version    : entry.fabric_loader,
+            fabric_api_version: entry.fabric_api,
+            minecraft_version : entry.mc,
+            java_version      : entry.java,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = entry.java
+    options.encoding = 'UTF-8'
+}

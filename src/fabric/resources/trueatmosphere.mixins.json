@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.carilt01.trueatmosphere.fabric.mixin",
+//? if mc >= 26.1 {
+  "compatibilityLevel": "JAVA_25",
+//?} else {
+  "compatibilityLevel": "JAVA_21",
+//?}
+//? if mc < 1.21.5 {
+  "refmap": "trueatmosphere.refmap.json",
+//?}
+  "client": [
+    "FogRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
