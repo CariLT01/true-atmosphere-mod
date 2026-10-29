@@ -23,18 +23,28 @@ PY
 if [ -n "$only" ]; then
     versions="${only//,/ }"
 else
-    versions="$(list_versions)"
+    versions="$(list_versions | tr '\n' ' ')"
 fi
 
 build() {
     local name="$1" dir="$2"
     shift 2
-    local tasks=()
+    local failed=()
+
+    echo "== ${name}: $versions"
     for mc in $versions; do
-        tasks+=(":${mc}:build")
+        echo "== ${name} ${mc}"
+        if ! (cd "$dir" && JAVA_HOME="${JAVA25_HOME:-$JAVA_HOME}" ./gradlew ":${mc}:build" \
+                --console=plain --no-parallel --max-workers=1); then
+            failed+=("$mc")
+        fi
     done
-    echo "== ${name}: ${tasks[*]}"
-    (cd "$dir" && JAVA_HOME="${JAVA25_HOME:-$JAVA_HOME}" ./gradlew "${tasks[@]}" --console=plain)
+
+    if [ "${#failed[@]}" -gt 0 ]; then
+        echo "!! ${name} failed: ${failed[*]}" >&2
+        return 1
+    fi
+    echo "== ${name}: all ${versions// /, } built"
 }
 
 case "$loader" in

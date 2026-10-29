@@ -25,8 +25,16 @@ Physically accurate atmosphere at vanilla performance!
     ordering="NONE"
     side="BOTH"
 
-# NeoForge's sky hook is a mixin from 1.21.9 on; 1.21.1-1.21.8 hand the sky pass to the dimension
-# effects instead, and a declared-but-unused mixin config fails the load.
+[[dependencies.${mod_id}]]
+    modId="betterclouds"
+    type="optional"
+    versionRange="*"
+    ordering="NONE"
+    side="CLIENT"
+
+[[mixins]]
+config="trueatmosphere.compat.mixins.json"
+
 #? if mc >= 1.21.9 {
 [[mixins]]
 config="trueatmosphere.sky.mixins.json"

@@ -1,10 +1,13 @@
 {
-  "mod_version": "0.3.2-alpha",
+  "mod_version": "0.3.3-alpha",
   "mod_id": "trueatmosphere",
   "mod_name": "True Atmosphere",
   "mod_license": "All Rights Reserved",
   "mod_group_id": "com.carilt01.trueatmosphere",
   "_comment": "era picks the shared source tree in common/era-<era>/; java is the toolchain. NeoForge lines that never left beta are pinned to their last beta, because that is the only artifact that exists for that Minecraft version.",
+  "_comment_requirements": "fabric_loader/fabric_api above are build inputs only; min_fabric_loader and min_fabric_api are the floors written into the shipped descriptors, kept far below the build versions so an older loader/API install still loads the jar. NeoForge floors default to <major>.<minor>.0 of the entry's line unless the entry sets min_neoforge (and min_fabric_loader / min_fabric_api on an entry override the root floor).",
+  "min_fabric_loader": "0.15.0",
+  "min_fabric_api": "0.90.0",
   "versions": [
     {
       "mc": "1.21.1",

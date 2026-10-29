@@ -464,8 +464,6 @@ public final class SkyDomeRenderer implements AutoCloseable {
         select(level);
         sync(mode);
 
-        modelView = SkyBobbing.withoutViewBob(modelView);
-
         RenderTarget mainTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         GpuTextureView color = mainTarget.getColorTextureView();
         GpuTextureView depth = mainTarget.getDepthTextureView();

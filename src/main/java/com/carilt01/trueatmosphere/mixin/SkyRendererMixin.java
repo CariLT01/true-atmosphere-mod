@@ -4,9 +4,6 @@ package com.carilt01.trueatmosphere.mixin;
 import com.carilt01.trueatmosphere.client.CelestialSizes;
 import com.carilt01.trueatmosphere.client.SkyBench;
 import com.carilt01.trueatmosphere.client.SkyDomeRenderer;
-//? if mc >= 1.21.5 {
-import com.carilt01.trueatmosphere.client.SkyBobbing;
-//?}
 
 import com.mojang.blaze3d.systems.RenderSystem;
 //? if mc >= 1.21.2 {
@@ -133,20 +130,6 @@ public abstract class SkyRendererMixin {
         info.cancel();
     }
 
-    @Inject(method = "renderSunMoonAndStars", at = @At("HEAD"))
-    private void trueatmosphere$beginBobFreeCelestials(PoseStack pose, MultiBufferSource.BufferSource buffers,
-            float timeOfDay, int moonPhase, float fade, float starBrightness, FogParameters fog,
-            CallbackInfo info) {
-        trueatmosphere$beginBobFreeSky();
-    }
-
-    @Inject(method = "renderSunMoonAndStars", at = @At("TAIL"))
-    private void trueatmosphere$endBobFreeCelestials(PoseStack pose, MultiBufferSource.BufferSource buffers,
-            float timeOfDay, int moonPhase, float fade, float starBrightness, FogParameters fog,
-            CallbackInfo info) {
-        trueatmosphere$endBobFreeSky();
-    }
-
     @Inject(method = "renderSunriseAndSunset", at = @At("HEAD"), cancellable = true)
     private void trueatmosphere$skipSunrise(CallbackInfo info) {
         if (skyReplaced()) {
@@ -271,32 +254,6 @@ public abstract class SkyRendererMixin {
         info.cancel();
     }
 
-    @Inject(method = "renderSunriseAndSunset", at = @At("HEAD"))
-    private void trueatmosphere$beginBobFreeSunrise(PoseStack pose, float sunAngle, int sunriseColor,
-            CallbackInfo info) {
-        trueatmosphere$beginBobFreeSky();
-    }
-
-    @Inject(method = "renderSunriseAndSunset", at = @At("RETURN"))
-    private void trueatmosphere$endBobFreeSunrise(PoseStack pose, float sunAngle, int sunriseColor,
-            CallbackInfo info) {
-        trueatmosphere$endBobFreeSky();
-    }
-
-    @Inject(method = "renderSunMoonAndStars", at = @At("HEAD"))
-    private void trueatmosphere$beginBobFreeCelestials(PoseStack pose, float sunAngle, float moonAngle,
-            float starAngle, net.minecraft.world.level.MoonPhase moonPhase, float rainBrightness,
-            float starBrightness, CallbackInfo info) {
-        trueatmosphere$beginBobFreeSky();
-    }
-
-    @Inject(method = "renderSunMoonAndStars", at = @At("RETURN"))
-    private void trueatmosphere$endBobFreeCelestials(PoseStack pose, float sunAngle, float moonAngle,
-            float starAngle, net.minecraft.world.level.MoonPhase moonPhase, float rainBrightness,
-            float starBrightness, CallbackInfo info) {
-        trueatmosphere$endBobFreeSky();
-    }
-
     @Redirect(method = "renderSun", at = @At(value = "INVOKE",
             target = "Lorg/joml/Matrix4fStack;scale(FFF)Lorg/joml/Matrix4f;"))
     private Matrix4f trueatmosphere$halfSizeSun(Matrix4fStack stack, float x, float y, float z) {
@@ -343,20 +300,6 @@ public abstract class SkyRendererMixin {
         info.cancel();
     }
 
-    @Inject(method = "renderSunMoonAndStars", at = @At("HEAD"))
-    private void trueatmosphere$beginBobFreeCelestials(PoseStack pose, float sunAngle, float moonAngle,
-            float starAngle, net.minecraft.world.level.MoonPhase moonPhase, float rainBrightness,
-            float starBrightness, CallbackInfo info) {
-        trueatmosphere$beginBobFreeSky();
-    }
-
-    @Inject(method = "renderSunMoonAndStars", at = @At("TAIL"))
-    private void trueatmosphere$endBobFreeCelestials(PoseStack pose, float sunAngle, float moonAngle,
-            float starAngle, net.minecraft.world.level.MoonPhase moonPhase, float rainBrightness,
-            float starBrightness, CallbackInfo info) {
-        trueatmosphere$endBobFreeSky();
-    }
-
     @Inject(method = "renderSunriseAndSunset", at = @At("HEAD"), cancellable = true)
     private void trueatmosphere$skipSunriseGlow(PoseStack pose, float sunAngle, int sunriseColor,
             CallbackInfo info) {
@@ -399,15 +342,6 @@ public abstract class SkyRendererMixin {
             return;
         }
         renderer.prepare(level);
-
-        trueatmosphere$beginBobFreeSky();
-    }
-
-    @Inject(method = "render(Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;"
-            + "Lnet/minecraft/client/renderer/state/level/SkyRenderState;)V", at = @At("RETURN"))
-    private void trueatmosphere$restoreSkyModelView(GpuBufferSlice skyFog, SkyRenderState state,
-            CallbackInfo info) {
-        trueatmosphere$endBobFreeSky();
     }
 
     @Inject(method = "renderSunriseAndSunset", at = @At("HEAD"), cancellable = true)
@@ -459,25 +393,9 @@ public abstract class SkyRendererMixin {
     //?}
 
     //? if mc >= 1.21.5 {
-
-    private static Matrix4f trueatmosphere$bobRestore;
-
     private static boolean trueatmosphere$ownsSky() {
         SkyDomeRenderer renderer = SkyDomeRenderer.instance;
         return renderer != null && renderer.isReady() && Minecraft.getInstance().level != null;
-    }
-
-    private static void trueatmosphere$beginBobFreeSky() {
-        Matrix4fStack stack = RenderSystem.getModelViewStack();
-        trueatmosphere$bobRestore = new Matrix4f(stack);
-        stack.set(SkyBobbing.withoutViewBob(trueatmosphere$bobRestore));
-    }
-
-    private static void trueatmosphere$endBobFreeSky() {
-        if (trueatmosphere$bobRestore != null) {
-            RenderSystem.getModelViewStack().set(trueatmosphere$bobRestore);
-            trueatmosphere$bobRestore = null;
-        }
     }
     //?}
 }

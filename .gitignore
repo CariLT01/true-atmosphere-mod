@@ -26,3 +26,6 @@ __pycache__/
 internal/
 screenshots/
 common/resources/assets/trueatmosphere/sky/*
+
+# Compatibility mods fetched for the dev runs by scripts/fetch_compat.py
+.compat/

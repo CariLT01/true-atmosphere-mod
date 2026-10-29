@@ -42,6 +42,7 @@ public final class SkySelfTest {
     }
 
     public static void tick(Minecraft minecraft) {
+        SkyWalkTest.tick(minecraft);
         if (ENV == null || ENV.isBlank()) {
             return;
         }
@@ -72,6 +73,7 @@ public final class SkySelfTest {
         }
 
         if (!prepared) {
+            minecraft.options.pauseOnLostFocus = false;
             hideHud(minecraft);
             serverCommand(minecraft, "gamerule doDaylightCycle false");
             serverCommand(minecraft, "gamerule doWeatherCycle false");
@@ -108,8 +110,11 @@ public final class SkySelfTest {
             return;
         }
 
-        grab(minecraft);
+        grab(minecraft, "");
+        advance(minecraft);
+    }
 
+    private static void advance(Minecraft minecraft) {
         int next = index + 1;
         ticks = 0;
         retries = 0;
@@ -213,12 +218,12 @@ public final class SkySelfTest {
         });
     }
 
-    private static void grab(Minecraft minecraft) {
+    private static void grab(Minecraft minecraft, String suffix) {
         String name = (TAG == null || TAG.isBlank() ? "atmo" : TAG)
                 + "_" + times[index]
                 + "_yaw" + Math.round(yaws[index])
                 + "_p" + Math.round(pitches[index])
-                + "_y" + Math.round(heights[index]) + ".png";
+                + "_y" + Math.round(heights[index]) + suffix + ".png";
         float angle = sunAngle(minecraft);
         LOGGER.info("shot {}: requested {} actual {} -> sun angle {} (elevation {} deg)",
                 index, times[index], clockTime(minecraft.level), angle,
@@ -234,6 +239,7 @@ public final class SkySelfTest {
                 : (uploads - lastUploads) + " table uploads since the last shot (" + uploads + " total)");
         LOGGER.info("shot {}: rain {} thunder {}", index,
                 minecraft.level.getRainLevel(1.0F), minecraft.level.getThunderLevel(1.0F));
+        LOGGER.info("shot {}: better clouds {}", index, CloudBaseTint.probe());
         lastUploads = uploads;
         //? if mc >= 26.2 {
         Screenshot.grab(minecraft.gameDirectory, name, minecraft.gameRenderer.mainRenderTarget(), 1,
@@ -242,8 +248,7 @@ public final class SkySelfTest {
         Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(), 1,
                 message -> LOGGER.info("Screenshot: {}", message.getString()));
         //?} else {
-        Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(),
-                message -> LOGGER.info("Screenshot: {}", message.getString()));
+        Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(),                    message -> LOGGER.info("Screenshot: {}", message.getString()));
         //?}
     }
 

@@ -64,8 +64,16 @@ def upper_bound(members):
     last = versions.index(members[-1])
     return versions[last + 1]["mc"] if last + 1 < len(versions) else None
 
+def neo_floor(entry):
+    """NeoForge line floor the build wrote into the descriptor; mirrors neoFloor in the gradle script."""
+    explicit = entry.get("min_neoforge")
+    if explicit:
+        return explicit
+    line = entry["neoforge"].split("-")[0].split(".")
+    return ".".join(line[:2] + ["0"])
+
 def fabric_api_floor(members):
-    lowest = min((e["fabric_api"].split("+")[0] for e in members), key=numeric)
+    lowest = min((e.get("min_fabric_api") or matrix["min_fabric_api"] for e in members), key=numeric)
     return f">={lowest}"
 
 def rewrite_fabric(descriptor, members, top):
@@ -79,7 +87,7 @@ def rewrite_fabric(descriptor, members, top):
 def rewrite_neoforge(descriptor, members, top):
     text = descriptor.decode("utf-8")
     first = members[0]["mc"]
-    lowest = min((e["neoforge"] for e in members), key=numeric)
+    lowest = min((neo_floor(e) for e in members), key=numeric)
     minecraft_range = f"[{first},{top})" if top else f"[{first},)"
 
     lines = text.splitlines(keepends=True)
@@ -139,17 +147,28 @@ def main():
                 return 1
 
             reference = payload(zipfile.ZipFile(sources[0]))
+            split = False
             for mc, path in zip(mcs[1:], sources[1:]):
                 other = payload(zipfile.ZipFile(path))
                 if other != reference:
                     differing = sorted(set(reference) ^ set(other)) + sorted(
                         k for k in set(reference) & set(other) if reference[k] != other[k])
-                    print(f"refusing to merge {mcs[0]} and {mc}: payloads differ "
-                          f"({', '.join(differing[:5])}{'...' if len(differing) > 5 else ''})",
+                    print(f"not merging {mcs[0]} and {mc}: payloads differ "
+                          f"({', '.join(differing[:5])}{'...' if len(differing) > 5 else ''}); "
+                          f"shipping {len(mcs)} jars instead of one", file=sys.stderr)
+                    print("the era still shares one source tree; a dependency changed the "
+                          "bytecode, so the range has to shrink to what really matches",
                           file=sys.stderr)
-                    print("each era must compile to identical classes; check versions.json",
-                          file=sys.stderr)
-                    return 1
+                    split = True
+                    break
+
+            if split:
+                for mc, path in zip(mcs, sources):
+                    target = os.path.join(dist, f"trueatmosphere-{mc}-{loader}-{mod_version}.jar")
+                    shutil.copyfile(path, target)
+                    size = os.path.getsize(target) / (1024 * 1024)
+                    written.append((os.path.basename(target), mc, size))
+                continue
 
             label = mcs[0] if len(mcs) == 1 else f"{mcs[0]}-{mcs[-1]}"
             target = os.path.join(dist, f"trueatmosphere-{label}-{loader}-{mod_version}.jar")
@@ -169,6 +188,13 @@ def main():
     for name, mcs, size in written:
         print(f"{name:<52} {mcs:<24} {size:6.1f} MiB")
     print(f"{len(written)} jar(s) in {os.path.relpath(dist, root)}/")
+
+    produced = {name for name, _, _ in written}
+    stale = sorted(name for name in os.listdir(dist)
+                   if name.startswith("trueatmosphere-") and name.endswith(".jar")
+                   and name not in produced)
+    for name in stale:
+        print(f"stale in dist/, not rebuilt this run: {name}", file=sys.stderr)
     return 0
 
 sys.exit(main())

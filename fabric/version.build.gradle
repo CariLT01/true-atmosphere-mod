@@ -36,6 +36,31 @@ dependencies {
         implementation "net.fabricmc:fabric-loader:${entry.fabric_loader}"
         implementation "net.fabricmc.fabric-api:fabric-api:${entry.fabric_api}"
     }
+
+    def compatDir = new File(rootDir.parentFile, '.compat')
+    if (compatDir.isDirectory()) {
+        def prefix = "${entry.mc}-fabric"
+        def jars = []
+        compatDir.listFiles().sort { it.name }.each { dir ->
+            def main = new File(dir, "${prefix}-${dir.name}.jar")
+            if (main.isFile()) {
+                jars << main
+            }
+
+            def nested = new File(dir, 'nested')
+            if (nested.isDirectory()) {
+                nested.listFiles().findAll { it.name.startsWith("${prefix}-") && it.name.endsWith('.jar') }
+                        .sort { it.name }.each { jars << it }
+            }
+        }
+        jars.each { jar ->
+            if (remapped) {
+                modLocalRuntime files(jar)
+            } else {
+                localRuntime files(jar)
+            }
+        }
+    }
 }
 
 project.ext.atmoLoader = 'fabric'
@@ -68,8 +93,8 @@ loom {
 tasks.withType(ProcessResources).configureEach {
     var replaceProperties = [
             version           : matrix.mod_version,
-            loader_version    : entry.fabric_loader,
-            fabric_api_version: entry.fabric_api,
+            loader_version    : entry.min_fabric_loader ?: matrix.min_fabric_loader,
+            fabric_api_version: entry.min_fabric_api ?: matrix.min_fabric_api,
             minecraft_version : entry.mc,
             java_version      : entry.java,
     ]

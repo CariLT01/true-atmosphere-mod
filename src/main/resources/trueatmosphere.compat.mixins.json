@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.carilt01.trueatmosphere.mixin.compat",
+//? if mc >= 26.1 {
+  "compatibilityLevel": "JAVA_25",
+//?} else {
+  "compatibilityLevel": "JAVA_21",
+//?}
+  "client": [
+    "BetterCloudsTintMixin",
+    "BetterCloudsModernTintMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

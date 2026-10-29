@@ -22,6 +22,10 @@ public class Config {
             .comment("Choose rendering geometry mode. QUAD (Fastest) renders one full quad for the sky. DOME renders a dome to cover the sky. VANILLA renders the vanilla sky.")
             .defineEnum("skyMode", SkyMode.QUAD);
 
+    public static final ModConfigSpec.BooleanValue BETTER_CLOUDS_TINT = BUILDER
+            .comment("Experimental: Tint Better Clouds' deck with this mod's baked cloud-base colour. Needs a restart to take effect.")
+            .define("betterCloudsTint", false);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     public static void apply() {
@@ -29,6 +33,7 @@ public class Config {
         AtmosphereSettings.starCount = STAR_COUNT.getAsInt();
         AtmosphereSettings.starSizeVariation = STAR_SIZE_VARIATION.get().floatValue();
         AtmosphereSettings.minimumStarSize = STAR_MIN_SIZe.get().floatValue();
+        AtmosphereSettings.betterCloudsTint = BETTER_CLOUDS_TINT.get();
     }
 
     public static void onLoad(ModConfigEvent event) {

@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import com.carilt01.trueatmosphere.ModInfo;
+import com.carilt01.trueatmosphere.client.CloudBaseTint;
 import com.carilt01.trueatmosphere.client.SkyBench;
 import com.carilt01.trueatmosphere.client.SkyDomeRenderer;
 import com.carilt01.trueatmosphere.client.SkyLut;
@@ -83,6 +84,7 @@ public final class TrueAtmosphereFabric implements ClientModInitializer {
             ensureLoaded(minecraft);
             SkyBench.tick(minecraft);
             SkySelfTest.tick(minecraft);
+            CloudBaseTint.tick(minecraft);
         });
 
         ModInfo.LOGGER.info("True Atmosphere client ready on Fabric");

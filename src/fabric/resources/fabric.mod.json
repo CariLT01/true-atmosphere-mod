@@ -20,8 +20,15 @@
     {
       "config": "trueatmosphere.sky.mixins.json",
       "environment": "client"
+    },
+    {
+      "config": "trueatmosphere.compat.mixins.json",
+      "environment": "client"
     }
   ],
+  "suggests": {
+    "betterclouds": "*"
+  },
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": ">=${fabric_api_version}",

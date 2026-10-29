@@ -137,6 +137,7 @@ public final class AtmosphereSkyClient {
         ensureLoaded(minecraft);
         SkyBench.tick(minecraft);
         SkySelfTest.tick(minecraft);
+        CloudBaseTint.tick(minecraft);
     }
 
     private static void ensureLoaded(Minecraft minecraft) {

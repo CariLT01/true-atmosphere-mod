@@ -5,6 +5,35 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="$root/internal/selftest"
 
+usage() {
+    cat <<'USAGE'
+Runs the in-game sky self-test (ATMO_SELFTEST) for the Minecraft versions in versions.json.
+
+ scripts/selftest-matrix.sh                       # every version, both loaders
+ scripts/selftest-matrix.sh --per-era             # newest version of each era, both loaders
+ scripts/selftest-matrix.sh neoforge              # every NeoForge version
+ scripts/selftest-matrix.sh fabric 1.21.4,26.3    # just those two Fabric runs
+ scripts/selftest-matrix.sh --per-era fabric c,d  # newest 1.21.6+ and 1.21.9+ build, Fabric
+ scripts/selftest-matrix.sh --list                # print the versions a run would test
+ scripts/selftest-matrix.sh report                # summarise ../internal/selftest
+
+--per-era is the quick gate: renderers are shared across an era's versions, so one build per
+era finds the bulk of the breakage for a fraction of the runtime. Run the full matrix before a
+release.
+
+Each run needs a world in the client's saves directory. The script creates one by starting the
+matching dedicated server once (flat, fixed seed), waiting for "Done (", typing "stop" into it
+and copying the save across; later runs reuse it.
+
+Everything is written to internal/selftest/<loader>-<mc>.log, screenshots go to the usual run
+directory. The script keeps going after a failing version and prints a PASS/FAIL summary at the
+end, so one broken era does not hide the rest.
+
+Java: Gradle itself needs 25 for the 26.x Loom runs (see build-matrix.sh); each version still
+compiles against the toolchain in versions.json.
+USAGE
+}
+
 per_era=""
 list_only=""
 positional=()
@@ -12,7 +41,7 @@ for arg in "$@"; do
     case "$arg" in
         --per-era) per_era=1 ;;
         --list) list_only=1 ;;
-        -h|--help|help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help|help) usage; exit 0 ;;
         -*) echo "unknown option $arg" >&2; exit 2 ;;
         *) positional+=("$arg") ;;
     esac

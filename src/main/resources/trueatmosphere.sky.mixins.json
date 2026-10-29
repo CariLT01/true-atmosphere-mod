@@ -11,8 +11,9 @@
   "refmap": "trueatmosphere.refmap.json",
 //?}
   "client": [
-    "GameRendererMixin",
-//? if mc >= 1.21.2 {
+//? if mc == 1.21.1 {
+    "LevelRendererSkyMixin"
+//?} else {
     "SkyRendererMixin"
 //?}
   ],

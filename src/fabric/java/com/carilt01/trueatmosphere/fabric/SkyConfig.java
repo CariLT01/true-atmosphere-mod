@@ -44,6 +44,7 @@ final class SkyConfig {
         changed |= fill(root, "starCount", AtmosphereSettings.starCount);
         changed |= fill(root, "starSizeVariation", AtmosphereSettings.starSizeVariation);
         changed |= fill(root, "minimumStarSize", AtmosphereSettings.minimumStarSize);
+        changed |= fillBoolean(root, "betterCloudsTint", AtmosphereSettings.betterCloudsTint);
 
         apply(root);
         ModInfo.LOGGER.info("Sky config: {} (geometry {}, {} stars)", file, AtmosphereSettings.skyMode,
@@ -66,12 +67,21 @@ final class SkyConfig {
         return true;
     }
 
+    private static boolean fillBoolean(JsonObject root, String key, boolean value) {
+        if (root.has(key)) {
+            return false;
+        }
+        root.add(key, new JsonPrimitive(value));
+        return true;
+    }
+
     private static void apply(JsonObject root) {
         try {
             AtmosphereSettings.skyMode = SkyMode.byName(root.get("sky").getAsString());
             AtmosphereSettings.starCount = clamp(root.get("starCount").getAsInt(), 0, 65_535);
             AtmosphereSettings.starSizeVariation = clamp(root.get("starSizeVariation").getAsFloat(), 0.0F, 10.0F);
             AtmosphereSettings.minimumStarSize = clamp(root.get("minimumStarSize").getAsFloat(), 0.0F, 10.0F);
+            AtmosphereSettings.betterCloudsTint = root.get("betterCloudsTint").getAsBoolean();
         } catch (RuntimeException e) {
             ModInfo.LOGGER.warn("Malformed config value, keeping the defaults", e);
         }

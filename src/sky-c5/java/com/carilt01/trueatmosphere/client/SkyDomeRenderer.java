@@ -28,7 +28,6 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
-import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -497,30 +496,23 @@ public final class SkyDomeRenderer implements AutoCloseable {
         select(level, partialTick);
         sync(mode);
 
-        Matrix4fStack stack = RenderSystem.getModelViewStack();
-        Matrix4f restore = new Matrix4f(stack);
-        stack.set(SkyBobbing.withoutViewBob(restore));
-        try {
-            Minecraft minecraft = Minecraft.getInstance();
-            GpuTexture color = minecraft.getMainRenderTarget().getColorTexture();
-            GpuTexture depth = minecraft.getMainRenderTarget().getDepthTexture();
+        Minecraft minecraft = Minecraft.getInstance();
+        GpuTexture color = minecraft.getMainRenderTarget().getColorTexture();
+        GpuTexture depth = minecraft.getMainRenderTarget().getDepthTexture();
 
-            long skyStarted = System.nanoTime();
-            if (mode == SkyMode.DOME) {
-                drawDome(color, depth, this.domePipeline, this.current, 1.0F);
+        long skyStarted = System.nanoTime();
+        if (mode == SkyMode.DOME) {
+            drawDome(color, depth, this.domePipeline, this.current, 1.0F);
 
-                if (this.blend > 1.0E-4F) {
-                    drawDome(color, depth, this.domeBlendPipeline, this.next, this.blend);
-                }
-            } else {
-                drawQuad(color, depth, this.blend);
+            if (this.blend > 1.0E-4F) {
+                drawDome(color, depth, this.domeBlendPipeline, this.next, this.blend);
             }
-            this.skyNanos += System.nanoTime() - skyStarted;
-
-            drawCelestial(level, partialTick, color, depth);
-        } finally {
-            stack.set(restore);
+        } else {
+            drawQuad(color, depth, this.blend);
         }
+        this.skyNanos += System.nanoTime() - skyStarted;
+
+        drawCelestial(level, partialTick, color, depth);
         this.frames++;
     }
 

@@ -425,8 +425,6 @@ public final class SkyDomeRenderer implements AutoCloseable {
         select(level, partialTick);
         sync(mode);
 
-        frustum = SkyBobbing.withoutViewBob(frustum);
-
         skyFogSetup.run();
         RenderSystem.disableBlend();
         RenderSystem.depthMask(false);

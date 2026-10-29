@@ -18,8 +18,25 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(entry.java)
 
+def neoLine = entry.neoforge.tokenize('.')
+def neoFloor = entry.min_neoforge ?: (neoLine[0] + '.' + neoLine[1] + '.0')
+
 project.ext.atmoLoader = 'neoforge'
 apply from: new File(rootDir.parentFile, 'gradle/variant-sources.gradle')
+
+dependencies {
+
+    def compatDir = new File(rootDir.parentFile, '.compat')
+    if (compatDir.isDirectory()) {
+        compatDir.listFiles().sort { it.name }.each { dir ->
+            def jar = new File(dir, "${entry.mc}-neoforge-${dir.name}.jar")
+            if (jar.isFile()) {
+
+                runtimeOnly files(jar)
+            }
+        }
+    }
+}
 
 tasks.named('processResources').configure {
     exclude '**.cache'
@@ -67,7 +84,7 @@ tasks.withType(ProcessResources).configureEach {
     var replaceProperties = [
             minecraft_version      : entry.mc,
             minecraft_version_range: "[${entry.mc}]",
-            neo_version            : entry.neoforge,
+            neo_version            : neoFloor,
             loader_version_range   : '[1,)',
             mod_id                 : matrix.mod_id,
             mod_name               : matrix.mod_name,
