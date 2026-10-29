@@ -473,7 +473,6 @@ public final class SkyDomeRenderer implements AutoCloseable {
         }
 
         long skyStarted = System.nanoTime();
-        debug(modelView);
         RenderSystem.bindDefaultUniforms(pass);
         if (mode == SkyMode.DOME) {
             drawDome(pass, writeTransform(modelView, new Vector4f(1.0F, 1.0F, 1.0F, 1.0F)),
@@ -488,23 +487,6 @@ public final class SkyDomeRenderer implements AutoCloseable {
         }
         this.skyNanos += System.nanoTime() - skyStarted;
         this.frames++;
-    }
-
-    private static final boolean DEBUG = System.getenv("ATMO_SKY_DEBUG") != null;
-
-    private void debug(Matrix4f modelView) {
-        if (!DEBUG || this.frames % 20 != 0) {
-            return;
-        }
-        Matrix4f view = new Matrix4f(modelView);
-        Vector4f axisX = new Vector4f(view.m00(), view.m01(), view.m02(), 0.0F);
-        Vector4f axisY = new Vector4f(view.m10(), view.m11(), view.m12(), 0.0F);
-        Vector4f axisZ = new Vector4f(view.m20(), view.m21(), view.m22(), 0.0F);
-        ModInfo.LOGGER.info(
-                "sky debug frame {}: type {} det {} x {} y {} z {} translation {} {} {}",
-                this.frames, RenderSystem.getProjectionType(), view.determinant(),
-                axisX.length(), axisY.length(), axisZ.length(),
-                view.m30(), view.m31(), view.m32());
     }
 
     private static GpuBufferSlice writeTransform(Matrix4f modelView, Vector4f colorModulator) {

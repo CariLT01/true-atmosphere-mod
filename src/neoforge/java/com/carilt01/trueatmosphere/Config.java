@@ -23,7 +23,7 @@ public class Config {
             .defineEnum("skyMode", SkyMode.QUAD);
 
     public static final ModConfigSpec.BooleanValue BETTER_CLOUDS_TINT = BUILDER
-            .comment("Experimental: Tint Better Clouds' deck with this mod's baked cloud-base colour. Needs a restart to take effect.")
+            .comment("Experimental: Tint clouds from Better Clouds with this mod's prebaked data")
             .define("betterCloudsTint", false);
 
     static final ModConfigSpec SPEC = BUILDER.build();

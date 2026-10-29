@@ -3,7 +3,7 @@
 
 #include <minecraft:dynamictransforms.glsl>
 
-layout(location = 0) in vec4 v_far;
+layout(location = 0) in vec3 v_dir;
 
 uniform sampler2D TableCurrent;
 uniform sampler2D TableNext;
@@ -19,7 +19,7 @@ vec3 sample_table(sampler2D table, float u, float fv) {
 }
 
 void main() {
-    vec3 dir = normalize(v_far.xyz / v_far.w);
+    vec3 dir = normalize(v_dir);
 
     float u = atan(dir.z, dir.x) * INV_TAU;
     if (u < 0.0) {
