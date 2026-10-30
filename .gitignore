@@ -32,3 +32,4 @@ common/resources/assets/trueatmosphere/sky/*
 
 # Resources
 src/main/resources/assets/trueatmosphere/sky/*
+!src/main/resources/assets/trueatmosphere/sky/sky.bin

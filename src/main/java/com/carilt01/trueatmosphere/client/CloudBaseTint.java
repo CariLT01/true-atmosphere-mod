@@ -2,8 +2,6 @@ package com.carilt01.trueatmosphere.client;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import org.joml.Vector3f;
@@ -11,9 +9,6 @@ import org.joml.Vector3f;
 import com.carilt01.trueatmosphere.AtmosphereSettings;
 import com.carilt01.trueatmosphere.ModInfo;
 import com.carilt01.trueatmosphere.SkyMode;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.NativeImage;
 
 //? if mc >= 1.21.11 {
@@ -39,8 +34,6 @@ import net.minecraft.resources.ResourceLocation;
 //?}
 
 public final class CloudBaseTint {
-    private static final String RESOURCE = "/assets/trueatmosphere/sky/sky_lut_cloud_base.json";
-
     //? if mc >= 1.21.11 {
     private static final Identifier LIGHTING =
             Identifier.fromNamespaceAndPath("betterclouds", "textures/environment/cloud_light_gradient.png");
@@ -84,35 +77,21 @@ public final class CloudBaseTint {
     private CloudBaseTint() {
     }
 
-    private static void load() {
+    private static void load(Minecraft minecraft) {
         if (loaded) {
             return;
         }
         loaded = true;
-        try (InputStream in = CloudBaseTint.class.getResourceAsStream(RESOURCE)) {
-            if (in == null) {
-                ModInfo.LOGGER.warn("Cloud base tint is missing from the jar ({}); Better Clouds stays vanilla", RESOURCE);
+        try {
+            SkyLut.CloudTint tint = SkyLut.cloudTint(minecraft.getResourceManager());
+            if (tint.colors.length == 0 || tint.colors.length != tint.elevations.length * 3) {
+                ModInfo.LOGGER.warn("Cloud base tint is malformed ({} steps, {} colours)",
+                        tint.elevations.length, tint.colors.length / 3);
                 return;
             }
-            JsonObject root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
-            JsonArray rgba = root.getAsJsonArray("colors");
-            JsonArray heights = root.getAsJsonArray("sun_elevation_degrees");
-            if (rgba.size() != heights.size() || rgba.size() == 0) {
-                ModInfo.LOGGER.warn("Cloud base tint is malformed ({} steps, {} elevations)", rgba.size(), heights.size());
-                return;
-            }
-            float[] parsed = new float[rgba.size() * 3];
-            float[] parsedHeights = new float[heights.size()];
-            for (int step = 0; step < rgba.size(); step++) {
-                JsonArray color = rgba.get(step).getAsJsonArray();
-                parsed[step * 3] = color.get(0).getAsFloat();
-                parsed[step * 3 + 1] = color.get(1).getAsFloat();
-                parsed[step * 3 + 2] = color.get(2).getAsFloat();
-                parsedHeights[step] = heights.get(step).getAsFloat();
-            }
-            colors = parsed;
-            elevations = parsedHeights;
-            ModInfo.LOGGER.info("Loaded cloud base tint: {} sun steps", rgba.size());
+            colors = tint.colors;
+            elevations = tint.elevations;
+            ModInfo.LOGGER.info("Loaded cloud base tint: {} sun steps", elevations.length);
         } catch (IOException | RuntimeException e) {
             ModInfo.LOGGER.warn("Could not read the cloud base tint; Better Clouds stays vanilla", e);
         }
@@ -168,7 +147,7 @@ public final class CloudBaseTint {
         }
         lastSeen = current;
 
-        load();
+        load(minecraft);
         if (colors.length == 0) {
             return;
         }

@@ -220,7 +220,7 @@ def generated = new File(project.buildDir, 'variant')
 def conditions = { String expr ->
     new VariantExpr(expr, entry.mc, entry.era, atmoLoader).evaluate()
 }
-def binaryExtensions = ['.npy', '.png', '.ogg', '.zip'] as Set
+def binaryExtensions = ['.bin', '.png', '.ogg', '.zip'] as Set
 
 def generateVariant = tasks.register('generateVariant') {
     group = 'build'
@@ -261,8 +261,26 @@ def generateVariant = tasks.register('generateVariant') {
 
 sourceSets.main.java.setSrcDirs([new File(generated, 'java').path])
 sourceSets.main.resources.setSrcDirs([new File(generated, 'resources').path])
+apply plugin: 'com.google.protobuf'
+
+sourceSets.main.proto.srcDir(new File(sharedRoot, 'proto').path)
+
+protobuf {
+    protoc { artifact = 'com.google.protobuf:protoc:4.35.0' }
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java { option 'lite' }
+            }
+        }
+    }
+}
+
 tasks.named('compileJava').configure { dependsOn generateVariant }
-tasks.named('processResources').configure { dependsOn generateVariant }
+tasks.named('processResources').configure {
+    dependsOn generateVariant
+    exclude '**/*.proto'
+}
 
 tasks.matching { it.name in ['sourcesJar', 'remapSourcesJar'] }.configureEach {
     dependsOn generateVariant

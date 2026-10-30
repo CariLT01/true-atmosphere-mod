@@ -102,30 +102,11 @@ public final class TrueAtmosphereFabric implements ClientModInitializer {
     private static void ensureLoaded(Minecraft minecraft) {
         if (luts == null && lutLoad == null && !lutFailed) {
             lutLoad = CompletableFuture.supplyAsync(() -> {
-                SkyLut[] loaded = new SkyLut[SkyLut.VARIANTS.length];
-                for (int i = 0; i < loaded.length; i++) {
-                    try {
-                        loaded[i] = SkyLut.load(minecraft.getResourceManager(), SkyLut.VARIANTS[i]);
-                    } catch (IOException exception) {
-                        if (i == 0) {
-                            throw new CompletionException(exception);
-                        }
-                        ModInfo.LOGGER.warn("No {} sky table, weather blending falls back to clear",
-                                SkyLut.VARIANTS[i], exception);
-                        loaded[i] = loaded[0];
-                    }
+                try {
+                    return SkyLut.loadAll(minecraft.getResourceManager());
+                } catch (IOException exception) {
+                    throw new CompletionException(exception);
                 }
-                //? if mc >= 1.21.2 {
-                for (int i = 1; i < loaded.length; i++) {
-                    if (loaded[i].stepFloats() != loaded[0].stepFloats()) {
-                        ModInfo.LOGGER.warn("{} sky table is {}x{}, not {}x{}; blending falls back to clear",
-                                SkyLut.VARIANTS[i], loaded[i].azimuthSamples, loaded[i].altitudeSamples,
-                                loaded[0].azimuthSamples, loaded[0].altitudeSamples);
-                        loaded[i] = loaded[0];
-                    }
-                }
-                //?}
-                return loaded;
             }, Util.backgroundExecutor());
         }
 

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package trueatmosphere.sky;
+
+option java_package = "com.carilt01.trueatmosphere.sky";
+option java_outer_classname = "SkyBakeProto";
+
+message SkyBake {
+  uint32 format_version = 1;
+  string created_utc = 2;
+  repeated SkyTable tables = 3;
+  CloudTint cloud_tint = 4;
+}
+
+message SkyTable {
+  string variant = 1;
+  uint32 sun_steps = 2;
+  uint32 altitude_samples = 3;
+  uint32 azimuth_samples = 4;
+  float hemisphere_rows = 5;
+  float degrees_per_sun_step = 6;
+  repeated float display = 7;
+}
+
+message CloudTint {
+  repeated float sun_elevations_degrees = 1;
+  repeated TintColor colors = 2;
+  float cloud_base_altitude_m = 3;
+}
+
+message TintColor {
+  float red = 1;
+  float green = 2;
+  float blue = 3;
+}

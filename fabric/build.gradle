@@ -3,4 +3,6 @@ plugins {
     id 'fabric-loom' version '1.18.4' apply false
 
     id 'net.fabricmc.fabric-loom' version '1.18.4' apply false
+
+    id 'com.google.protobuf' version '0.9.5' apply false
 }

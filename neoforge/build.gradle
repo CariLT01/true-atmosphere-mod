@@ -1,3 +1,5 @@
 plugins {
     id 'net.neoforged.moddev' version '2.0.148' apply false
+
+    id 'com.google.protobuf' version '0.9.5' apply false
 }

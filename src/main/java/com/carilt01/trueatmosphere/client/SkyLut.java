@@ -2,14 +2,10 @@ package com.carilt01.trueatmosphere.client;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
-import java.nio.charset.StandardCharsets;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonParseException;
+
+import com.carilt01.trueatmosphere.ModInfo;
+import com.carilt01.trueatmosphere.sky.SkyBakeProto;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.mojang.logging.LogUtils;
 
 //? if mc >= 1.21.11 {
@@ -20,17 +16,21 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.Mth;
 
-import com.carilt01.trueatmosphere.ModInfo;
+import io.airlift.compress.zstd.ZstdDecompressor;
 
 import org.slf4j.Logger;
 
 public final class SkyLut {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final String RESOURCE = "sky/sky.bin";
 
     public static final String CLEAR = "clear";
     public static final String RAIN = "rain";
     public static final String THUNDER = "thunder";
     public static final String[] VARIANTS = {CLEAR, RAIN, THUNDER};
+
+    private static SkyLut[] loaded;
+    private static CloudTint tint;
 
     private final float[] display;
 
@@ -47,41 +47,50 @@ public final class SkyLut {
         this.azimuthSamples = azimuthSamples;
     }
 
-    public static SkyLut load(ResourceManager resources, String variant) throws IOException {
-        String stem = CLEAR.equals(variant) ? "sky/sky_lut" : "sky/sky_lut_" + variant;
-        //? if mc >= 1.21.11 {
-        Identifier metaId = Identifier.fromNamespaceAndPath(ModInfo.MODID, stem + ".json");
-        Identifier dataId = Identifier.fromNamespaceAndPath(ModInfo.MODID, stem + ".npy");
-        //?} else {
-        ResourceLocation metaId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".json");
-        ResourceLocation dataId = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, stem + ".npy");
-        //?}
+    public static final class CloudTint {
+        public final float[] colors;
+        public final float[] elevations;
 
-        JsonObject meta;
-        try (InputStream in = resources.getResourceOrThrow(metaId).open();
-                InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-            meta = JsonParser.parseReader(reader).getAsJsonObject();
-        } catch (JsonParseException e) {
-            throw new IOException("Invalid sky LUT metadata in " + metaId, e);
+        private CloudTint(float[] colors, float[] elevations) {
+            this.colors = colors;
+            this.elevations = elevations;
         }
+    }
 
-        int sunSteps = meta.get("sun_steps").getAsInt();
-        int altitudes = meta.get("altitude_samples").getAsInt();
-        int azimuths = meta.get("azimuth_samples").getAsInt();
-        if (sunSteps <= 0 || altitudes <= 0 || azimuths <= 0) {
-            throw new IOException("Invalid sky LUT dimensions in " + metaId);
+    public static synchronized SkyLut[] loadAll(ResourceManager resources) throws IOException {
+        if (loaded != null) {
+            return loaded;
         }
-
-        int expected = sunSteps * altitudes * azimuths * 3;
-        float[] display;
-        try (InputStream in = resources.getResourceOrThrow(dataId).open()) {
-            display = readNpyFloats(in, dataId, expected);
+        SkyBakeProto.SkyBake bake = read(resources);
+        SkyLut[] tables = new SkyLut[VARIANTS.length];
+        for (int i = 0; i < VARIANTS.length; i++) {
+            SkyBakeProto.SkyTable table = find(bake, VARIANTS[i]);
+            if (table == null) {
+                if (i == 0) {
+                    throw new IOException("Sky bake " + RESOURCE + " has no " + CLEAR + " table");
+                }
+                LOGGER.warn("No {} sky table, weather blending falls back to clear", VARIANTS[i]);
+                tables[i] = tables[0];
+                continue;
+            }
+            tables[i] = from(table);
+            if (i > 0 && tables[i].stepFloats() != tables[0].stepFloats()) {
+                LOGGER.warn("{} sky table is {}x{}, not {}x{}; blending falls back to clear",
+                        VARIANTS[i], tables[i].azimuthSamples, tables[i].altitudeSamples,
+                        tables[0].azimuthSamples, tables[0].altitudeSamples);
+                tables[i] = tables[0];
+            }
         }
+        tint = cloudTint(bake.getCloudTint());
+        loaded = tables;
+        LOGGER.info("Loaded sky bake {} ({} tables, cloud tint with {} steps)",
+                RESOURCE, tables.length, tint.elevations.length);
+        return tables;
+    }
 
-        SkyLut lut = new SkyLut(variant, display, sunSteps, altitudes, azimuths);
-        LOGGER.info("Loaded {} sky LUT {}x{}x{} ({} KiB, steps of {} KiB)", variant, sunSteps, altitudes, azimuths,
-                display.length * 4 / 1024, lut.stepFloats() * 4 / 1024);
-        return lut;
+    public static synchronized CloudTint cloudTint(ResourceManager resources) throws IOException {
+        loadAll(resources);
+        return tint;
     }
 
     public int stepFloats() {
@@ -142,51 +151,70 @@ public final class SkyLut {
         out[2] = Mth.lerp(blend, a2, b2);
     }
 
-    //? if mc >= 1.21.11 {
-    private static float[] readNpyFloats(InputStream in, Identifier dataId, int expectedFloats)
-    //?} else {
-    private static float[] readNpyFloats(InputStream in, ResourceLocation dataId, int expectedFloats)
-    //?}
-            throws IOException {
-        byte[] bytes = in.readAllBytes();
-        if (bytes.length < 10
-                || (bytes[0] & 0xFF) != 0x93
-                || bytes[1] != 'N' || bytes[2] != 'U' || bytes[3] != 'M'
-                || bytes[4] != 'P' || bytes[5] != 'Y') {
-            throw new IOException("Not a .npy file: " + dataId);
+    private static SkyBakeProto.SkyTable find(SkyBakeProto.SkyBake bake, String variant) {
+        for (SkyBakeProto.SkyTable table : bake.getTablesList()) {
+            if (variant.equals(table.getVariant())) {
+                return table;
+            }
         }
+        return null;
+    }
 
-        int major = bytes[6] & 0xFF;
-        int headerStart;
-        int headerLength;
-        if (major == 1) {
-            headerStart = 10;
-            headerLength = (bytes[8] & 0xFF) | ((bytes[9] & 0xFF) << 8);
-        } else {
-            headerStart = 12;
-            headerLength = (bytes[8] & 0xFF)
-                    | ((bytes[9] & 0xFF) << 8)
-                    | ((bytes[10] & 0xFF) << 16)
-                    | ((bytes[11] & 0xFF) << 24);
+    private static SkyLut from(SkyBakeProto.SkyTable table) throws IOException {
+        int sunSteps = table.getSunSteps();
+        int altitudes = table.getAltitudeSamples();
+        int azimuths = table.getAzimuthSamples();
+        if (sunSteps <= 0 || altitudes <= 0 || azimuths <= 0) {
+            throw new IOException("Invalid " + table.getVariant() + " sky table " + sunSteps + "x" + altitudes + "x" + azimuths);
         }
-        if (headerStart + headerLength > bytes.length) {
-            throw new IOException("Corrupt .npy header in " + dataId);
+        int expected = sunSteps * altitudes * azimuths * 3;
+        if (table.getDisplayCount() != expected) {
+            throw new IOException("Sky table " + table.getVariant() + " holds " + table.getDisplayCount()
+                    + " floats, expected " + expected);
         }
+        float[] display = new float[expected];
+        for (int i = 0; i < expected; i++) {
+            display[i] = table.getDisplay(i);
+        }
+        return new SkyLut(table.getVariant(), display, sunSteps, altitudes, azimuths);
+    }
 
-        String header = new String(bytes, headerStart, headerLength, StandardCharsets.ISO_8859_1);
-        if (!header.contains("<f4")) {
-            throw new IOException("Unsupported .npy dtype (expected little-endian float32): " + header);
+    private static CloudTint cloudTint(SkyBakeProto.CloudTint source) {
+        float[] colors = new float[source.getColorsCount() * 3];
+        for (int i = 0; i < source.getColorsCount(); i++) {
+            SkyBakeProto.TintColor color = source.getColors(i);
+            colors[i * 3] = color.getRed();
+            colors[i * 3 + 1] = color.getGreen();
+            colors[i * 3 + 2] = color.getBlue();
         }
-
-        int dataStart = headerStart + headerLength;
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, dataStart, bytes.length - dataStart).order(ByteOrder.LITTLE_ENDIAN);
-        FloatBuffer floats = buffer.asFloatBuffer();
-        if (floats.remaining() < expectedFloats) {
-            throw new IOException("Sky LUT payload is " + floats.remaining() + " floats, expected " + expectedFloats);
+        float[] elevations = new float[source.getSunElevationsDegreesCount()];
+        for (int i = 0; i < elevations.length; i++) {
+            elevations[i] = source.getSunElevationsDegrees(i);
         }
+        return new CloudTint(colors, elevations);
+    }
 
-        float[] out = new float[expectedFloats];
-        floats.get(out);
-        return out;
+    private static SkyBakeProto.SkyBake read(ResourceManager resources) throws IOException {
+        //? if mc >= 1.21.11 {
+        Identifier id = Identifier.fromNamespaceAndPath(ModInfo.MODID, RESOURCE);
+        //?} else {
+        ResourceLocation id = ResourceLocation.fromNamespaceAndPath(ModInfo.MODID, RESOURCE);
+        //?}
+
+        byte[] blob;
+        try (InputStream in = resources.getResourceOrThrow(id).open()) {
+            blob = in.readAllBytes();
+        }
+        long size = ZstdDecompressor.getDecompressedSize(blob, 0, blob.length);
+        if (size <= 0 || size > Integer.MAX_VALUE) {
+            throw new IOException("Sky bake " + id + " has no usable size (" + size + " bytes)");
+        }
+        byte[] payload = new byte[(int) size];
+        new ZstdDecompressor().decompress(blob, 0, blob.length, payload, 0, payload.length);
+        try {
+            return SkyBakeProto.SkyBake.parseFrom(payload);
+        } catch (InvalidProtocolBufferException e) {
+            throw new IOException("Corrupt sky bake " + id, e);
+        }
     }
 }

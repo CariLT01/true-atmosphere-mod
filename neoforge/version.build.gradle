@@ -24,7 +24,22 @@ def neoFloor = entry.min_neoforge ?: (neoLine[0] + '.' + neoLine[1] + '.0')
 project.ext.atmoLoader = 'neoforge'
 apply from: new File(rootDir.parentFile, 'gradle/variant-sources.gradle')
 
+repositories {
+    exclusiveContent {
+        forRepository { mavenCentral() }
+        filter {
+            includeGroup 'com.google.protobuf'
+            includeGroup 'io.airlift'
+        }
+    }
+}
+
 dependencies {
+
+    implementation 'com.google.protobuf:protobuf-javalite:4.35.0'
+    implementation 'io.airlift:aircompressor:0.27'
+    jarJar 'com.google.protobuf:protobuf-javalite:4.35.0'
+    jarJar 'io.airlift:aircompressor:0.27'
 
     def compatDir = new File(rootDir.parentFile, '.compat')
     if (compatDir.isDirectory()) {
@@ -77,6 +92,16 @@ neoForge {
         "${matrix.mod_id}" {
             sourceSet sourceSets.main
         }
+    }
+}
+
+def mcLine = entry.mc.tokenize('.').collect { it as Integer }
+def legacyRuntime = mcLine[0] == 1 && (mcLine[1] < 21 || (mcLine[1] == 21 && mcLine[2] < 9))
+
+if (legacyRuntime) {
+    dependencies {
+        additionalRuntimeClasspath 'com.google.protobuf:protobuf-javalite:4.35.0'
+        additionalRuntimeClasspath 'io.airlift:aircompressor:0.27'
     }
 }
 

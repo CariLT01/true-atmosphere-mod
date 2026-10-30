@@ -143,27 +143,11 @@ public final class AtmosphereSkyClient {
     private static void ensureLoaded(Minecraft minecraft) {
         if (luts == null && lutLoad == null && !lutFailed) {
             lutLoad = CompletableFuture.supplyAsync(() -> {
-                SkyLut[] loaded = new SkyLut[SkyLut.VARIANTS.length];
-                for (int i = 0; i < loaded.length; i++) {
-                    try {
-                        loaded[i] = SkyLut.load(minecraft.getResourceManager(), SkyLut.VARIANTS[i]);
-                    } catch (IOException e) {
-                        if (i == 0) {
-                            throw new CompletionException(e);
-                        }
-                        LOGGER.warn("No {} sky table, weather blending falls back to clear", SkyLut.VARIANTS[i], e);
-                        loaded[i] = loaded[0];
-                    }
+                try {
+                    return SkyLut.loadAll(minecraft.getResourceManager());
+                } catch (IOException e) {
+                    throw new CompletionException(e);
                 }
-                for (int i = 1; i < loaded.length; i++) {
-                    if (loaded[i].stepFloats() != loaded[0].stepFloats()) {
-                        LOGGER.warn("{} sky table is {}x{}, not {}x{}; blending falls back to clear",
-                                SkyLut.VARIANTS[i], loaded[i].azimuthSamples, loaded[i].altitudeSamples,
-                                loaded[0].azimuthSamples, loaded[0].altitudeSamples);
-                        loaded[i] = loaded[0];
-                    }
-                }
-                return loaded;
             }, Util.backgroundExecutor());
         }
 

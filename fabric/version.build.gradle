@@ -23,10 +23,16 @@ java {
 
 repositories {
     maven { url = 'https://maven.fabricmc.net/' }
+    mavenCentral()
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${entry.mc}"
+
+    implementation 'com.google.protobuf:protobuf-javalite:4.35.0'
+    include 'com.google.protobuf:protobuf-javalite:4.35.0'
+    implementation 'io.airlift:aircompressor:0.27'
+    include 'io.airlift:aircompressor:0.27'
 
     if (remapped) {
         mappings loom.officialMojangMappings()
